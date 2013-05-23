@@ -972,9 +972,11 @@ gst_videomixer2_collected (GstCollectPads * pads, GstVideoMixer2 * mix)
 
     /* stream-start (FIXME: create id based on input ids) */
     g_snprintf (s_id, sizeof (s_id), "mix-%08x", g_random_int ());
+    GST_COLLECT_PADS_STREAM_UNLOCK (pads);
     if (!gst_pad_push_event (mix->srcpad, gst_event_new_stream_start (s_id))) {
       GST_WARNING_OBJECT (mix->srcpad, "Sending stream start event failed");
     }
+    GST_COLLECT_PADS_STREAM_LOCK (pads);
     mix->send_stream_start = FALSE;
   }
 
@@ -1008,7 +1010,9 @@ gst_videomixer2_collected (GstCollectPads * pads, GstVideoMixer2 * mix)
   if (output_start_time >= mix->segment.stop) {
     GST_DEBUG_OBJECT (mix, "Segment done");
     GST_VIDEO_MIXER2_UNLOCK (mix);
+    GST_COLLECT_PADS_STREAM_UNLOCK (mix->collect);
     gst_pad_push_event (mix->srcpad, gst_event_new_eos ());
+    GST_COLLECT_PADS_STREAM_LOCK (mix->collect);
     ret = GST_FLOW_EOS;
     goto done_unlocked;
   }
@@ -1029,7 +1033,9 @@ gst_videomixer2_collected (GstCollectPads * pads, GstVideoMixer2 * mix)
   } else if (res == -1) {
     GST_DEBUG_OBJECT (mix, "All sinkpads are EOS -- forwarding");
     GST_VIDEO_MIXER2_UNLOCK (mix);
+    GST_COLLECT_PADS_STREAM_UNLOCK (mix->collect);
     gst_pad_push_event (mix->srcpad, gst_event_new_eos ());
+    GST_COLLECT_PADS_STREAM_LOCK (mix->collect);
     ret = GST_FLOW_EOS;
     goto done_unlocked;
   } else if (res == -2) {
@@ -1748,8 +1754,15 @@ gst_videomixer2_sink_event (GstCollectPads * pads, GstCollectData * cdata,
       break;
   }
 
-  if (event != NULL)
-    return gst_collect_pads_event_default (pads, cdata, event, discard);
+  if (event != NULL) {
+    gboolean was_locked = FALSE;
+
+    if (GST_EVENT_IS_SERIALIZED (event))
+      GST_COLLECT_PADS_STREAM_UNLOCK (mix->collect);
+    ret = gst_collect_pads_event_default (pads, cdata, event, discard);
+    if (was_locked)
+      GST_COLLECT_PADS_STREAM_LOCK (mix->collect);
+  }
 
   return ret;
 }
