@@ -659,6 +659,10 @@ gst_videomixer2_fill_queues (GstVideoMixer2 * mix,
   gboolean eos = TRUE;
   gboolean need_more_data = FALSE;
 
+  GST_ERROR_OBJECT (mix,
+      "output start end : %" GST_TIME_FORMAT " / %" GST_TIME_FORMAT,
+      GST_TIME_ARGS (output_start_time), GST_TIME_ARGS (output_end_time));
+
   for (l = mix->sinkpads; l; l = l->next) {
     GstVideoMixer2Pad *pad = l->data;
     GstVideoMixer2Collect *mixcol = pad->mixcol;
@@ -707,8 +711,24 @@ gst_videomixer2_fill_queues (GstVideoMixer2 * mix,
       g_assert (start_time != -1 && end_time != -1);
       end_time += start_time;   /* convert from duration to position */
 
+      /* Clip to segment and convert to running time */
+      start_time = MAX (start_time, segment->start);
+      if (segment->stop != -1)
+        end_time = MIN (end_time, segment->stop);
+      start_time =
+          gst_segment_to_running_time (segment, GST_FORMAT_TIME, start_time);
+      end_time =
+          gst_segment_to_running_time (segment, GST_FORMAT_TIME, end_time);
+      g_assert (start_time != -1 && end_time != -1);
+
+      /* Convert to the output segment rate */
+      if (ABS (mix->segment.rate) != 1.0) {
+        start_time *= ABS (mix->segment.rate);
+        end_time *= ABS (mix->segment.rate);
+      }
+
       if (mixcol->end_time != -1 && mixcol->end_time > end_time) {
-        GST_WARNING_OBJECT (pad, "Buffer from the past, dropping");
+        GST_ERROR_OBJECT (pad, "Buffer from the past, dropping");
         if (buf == mixcol->queued) {
           gst_buffer_unref (buf);
           gst_buffer_replace (&mixcol->queued, NULL);
@@ -737,22 +757,6 @@ gst_videomixer2_fill_queues (GstVideoMixer2 * mix,
 
         need_more_data = TRUE;
         continue;
-      }
-
-      /* Clip to segment and convert to running time */
-      start_time = MAX (start_time, segment->start);
-      if (segment->stop != -1)
-        end_time = MIN (end_time, segment->stop);
-      start_time =
-          gst_segment_to_running_time (segment, GST_FORMAT_TIME, start_time);
-      end_time =
-          gst_segment_to_running_time (segment, GST_FORMAT_TIME, end_time);
-      g_assert (start_time != -1 && end_time != -1);
-
-      /* Convert to the output segment rate */
-      if (ABS (mix->segment.rate) != 1.0) {
-        start_time *= ABS (mix->segment.rate);
-        end_time *= ABS (mix->segment.rate);
       }
 
       if (end_time >= output_start_time && start_time < output_end_time) {
@@ -1013,7 +1017,7 @@ gst_videomixer2_collected (GstCollectPads * pads, GstVideoMixer2 * mix)
   output_end_time =
       mix->ts_offset + gst_util_uint64_scale (mix->nframes + 1,
       GST_SECOND * GST_VIDEO_INFO_FPS_D (&mix->info),
-      GST_VIDEO_INFO_FPS_N (&mix->info));
+      GST_VIDEO_INFO_FPS_N (&mix->info)) + mix->segment.start;
   if (mix->segment.stop != -1)
     output_end_time = MIN (output_end_time, mix->segment.stop);
 
@@ -1026,9 +1030,9 @@ gst_videomixer2_collected (GstCollectPads * pads, GstVideoMixer2 * mix)
   } else if (res == -1) {
     GST_DEBUG_OBJECT (mix, "All sinkpads are EOS -- forwarding");
 
-    mix->segment.stop = output_end_time;
+    //    mix->segment.stop = output_end_time;
     GST_VIDEO_MIXER2_UNLOCK (mix);
-    gst_pad_push_event (mix->srcpad, gst_event_new_segment (&mix->segment));
+    //    gst_pad_push_event (mix->srcpad, gst_event_new_segment (&mix->segment));
     gst_pad_push_event (mix->srcpad, gst_event_new_eos ());
     ret = GST_FLOW_EOS;
     goto done_unlocked;
@@ -1047,6 +1051,7 @@ gst_videomixer2_collected (GstCollectPads * pads, GstVideoMixer2 * mix)
   } else {
     GstMessage *msg;
 
+    GST_ERROR ("sending qos in mixer");
     mix->qos_dropped++;
 
     /* TODO: live */
@@ -1069,7 +1074,7 @@ gst_videomixer2_collected (GstCollectPads * pads, GstVideoMixer2 * mix)
 
   GST_VIDEO_MIXER2_UNLOCK (mix);
   if (outbuf) {
-    GST_LOG_OBJECT (mix,
+    GST_ERROR_OBJECT (mix,
         "Pushing buffer with ts %" GST_TIME_FORMAT " and duration %"
         GST_TIME_FORMAT, GST_TIME_ARGS (GST_BUFFER_TIMESTAMP (outbuf)),
         GST_TIME_ARGS (GST_BUFFER_DURATION (outbuf)));
