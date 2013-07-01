@@ -116,6 +116,8 @@ static GstStaticPadTemplate videosink_templ =
         COMMON_VIDEO_CAPS "; "
         "video/x-h263, "
         COMMON_VIDEO_CAPS "; "
+        "video/x-epitech, "
+        COMMON_VIDEO_CAPS "; "
         "video/x-msmpeg, "
         COMMON_VIDEO_CAPS "; "
         "image/jpeg, "
@@ -1135,6 +1137,9 @@ skip_details:
     }
   } else if (!strcmp (mimetype, "video/x-dirac")) {
     gst_matroska_mux_set_codec_id (context, GST_MATROSKA_CODEC_ID_VIDEO_DIRAC);
+  } else if (!strcmp (mimetype, "video/x-epitech")) {
+    gst_matroska_mux_set_codec_id (context,
+        GST_MATROSKA_CODEC_ID_VIDEO_EPITECH);
   } else if (!strcmp (mimetype, "video/x-vp8")) {
     gst_matroska_mux_set_codec_id (context, GST_MATROSKA_CODEC_ID_VIDEO_VP8);
   } else if (!strcmp (mimetype, "video/x-vp9")) {

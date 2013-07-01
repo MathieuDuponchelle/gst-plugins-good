@@ -5069,6 +5069,9 @@ gst_matroska_demux_video_caps (GstMatroskaTrackVideoContext *
   } else if (!strcmp (codec_id, GST_MATROSKA_CODEC_ID_VIDEO_VP9)) {
     caps = gst_caps_new_empty_simple ("video/x-vp9");
     *codec_name = g_strdup_printf ("On2 VP9");
+  } else if (!strcmp (codec_id, GST_MATROSKA_CODEC_ID_VIDEO_EPITECH)) {
+    caps = gst_caps_new_empty_simple ("video/x-epitech");
+    *codec_name = g_strdup_printf ("Epitech codec");
   } else {
     GST_WARNING ("Unknown codec '%s', cannot build Caps", codec_id);
     return NULL;
