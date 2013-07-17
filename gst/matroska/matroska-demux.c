@@ -3111,8 +3111,6 @@ gst_matroska_demux_parse_blockgroup_or_simpleblock (GstMatroskaDemux * demux,
   gint64 referenceblock = 0;
   gint64 offset;
 
-  GST_ERROR ("pasing block group");
-
   offset = gst_ebml_read_get_offset (ebml);
 
   while (ret == GST_FLOW_OK && gst_ebml_read_has_remaining (ebml, 1, TRUE)) {
@@ -3339,8 +3337,6 @@ gst_matroska_demux_parse_blockgroup_or_simpleblock (GstMatroskaDemux * demux,
 
     stream = g_ptr_array_index (demux->common.src, stream_num);
 
-    GST_ERROR ("here at least");
-
     if (cluster_time != GST_CLOCK_TIME_NONE) {
       /* FIXME: What to do with negative timestamps? Give timestamp 0 or -1?
        * Drop unless the lace contains timestamp 0? */
@@ -3357,8 +3353,6 @@ gst_matroska_demux_parse_blockgroup_or_simpleblock (GstMatroskaDemux * demux,
     } else {
       lace_time = GST_CLOCK_TIME_NONE;
     }
-
-    GST_ERROR ("here at least");
 
     /* need to refresh segment info ASAP */
     if (GST_CLOCK_TIME_IS_VALID (lace_time) && demux->need_segment) {
@@ -3392,8 +3386,6 @@ gst_matroska_demux_parse_blockgroup_or_simpleblock (GstMatroskaDemux * demux,
       demux->need_segment = FALSE;
     }
 
-    GST_ERROR ("here at least");
-
     if (stream->send_stream_headers) {
       if (stream->stream_headers != NULL) {
         ret = gst_matroska_demux_push_stream_headers (demux, stream);
@@ -3405,15 +3397,11 @@ gst_matroska_demux_parse_blockgroup_or_simpleblock (GstMatroskaDemux * demux,
       stream->send_stream_headers = FALSE;
     }
 
-    GST_ERROR ("here at least");
-
     if (stream->send_dvd_event) {
       gst_matroska_demux_push_dvd_clut_change_event (demux, stream);
       /* FIXME: should we send this event again after (flushing) seek ? */
       stream->send_dvd_event = FALSE;
     }
-
-    GST_ERROR ("here at least");
 
     if (block_duration != -1) {
       if (stream->timecodescale == 1.0)
@@ -3429,8 +3417,6 @@ gst_matroska_demux_parse_blockgroup_or_simpleblock (GstMatroskaDemux * demux,
     }
     /* else duration is diff between timecode of this and next block */
 
-    GST_ERROR ("here at least");
-
     /* For SimpleBlock, look at the keyframe bit in flags. Otherwise,
        a ReferenceBlock implies that this is not a keyframe. In either
        case, it only makes sense for video streams. */
@@ -3443,16 +3429,12 @@ gst_matroska_demux_parse_blockgroup_or_simpleblock (GstMatroskaDemux * demux,
       }
     }
 
-    GST_ERROR ("here at least");
-
     if (delta_unit && stream->set_discont) {
       /* When doing seeks or such, we need to restart on key frames or
        * decoders might choke. */
       GST_DEBUG_OBJECT (demux, "skipping delta unit");
       goto done;
     }
-
-    GST_ERROR ("here at least");
 
     for (n = 0; n < laces; n++) {
       GstBuffer *sub;
@@ -3461,8 +3443,6 @@ gst_matroska_demux_parse_blockgroup_or_simpleblock (GstMatroskaDemux * demux,
         GST_WARNING_OBJECT (demux, "Invalid lace size");
         break;
       }
-
-      GST_ERROR ("passing here at least");
 
       /* QoS for video track with an index. the assumption is that
          index entries point to keyframes, but if that is not true we
@@ -3685,7 +3665,6 @@ gst_matroska_demux_parse_blockgroup_or_simpleblock (GstMatroskaDemux * demux,
       g_assert (stream->alignment <= G_MEM_ALIGN);
       sub = gst_matroska_demux_align_buffer (demux, sub, stream->alignment);
 
-      GST_ERROR ("pushing buffer NAO");
       ret = gst_pad_push (stream->pad, sub);
 
       if (demux->common.segment.rate < 0) {
@@ -3721,7 +3700,6 @@ done:
   /* EXITS */
 eos:
   {
-    GST_ERROR ("exiting here");
     stream->eos = TRUE;
     ret = GST_FLOW_OK;
     /* combine flows */
@@ -3730,7 +3708,6 @@ eos:
   }
 invalid_lacing:
   {
-    GST_ERROR ("exiting here");
     GST_ELEMENT_WARNING (demux, STREAM, DEMUX, (NULL), ("Invalid lacing size"));
     /* non-fatal, try next block(group) */
     ret = GST_FLOW_OK;
@@ -3738,7 +3715,6 @@ invalid_lacing:
   }
 data_error:
   {
-    GST_ERROR ("exiting here");
     GST_ELEMENT_WARNING (demux, STREAM, DEMUX, (NULL), ("Data error"));
     /* non-fatal, try next block(group) */
     ret = GST_FLOW_OK;
@@ -4488,12 +4464,11 @@ gst_matroska_demux_loop (GstPad * pad)
       return;
   }
 
-  GST_ERROR_OBJECT (demux, "Offset %" G_GUINT64_FORMAT ", Element id 0x%x, "
+  GST_DEBUG_OBJECT (demux, "Offset %" G_GUINT64_FORMAT ", Element id 0x%x, "
       "size %" G_GUINT64_FORMAT ", needed %d", demux->common.offset, id,
       length, needed);
 
   ret = gst_matroska_demux_parse_id (demux, id, length, needed);
-  GST_ERROR ("ret : %d", ret);
   if (ret == GST_FLOW_EOS)
     goto eos;
   if (ret != GST_FLOW_OK)
@@ -4513,7 +4488,6 @@ gst_matroska_demux_loop (GstPad * pad)
         goto next;
     }
 
-    GST_ERROR_OBJECT (demux, "All streams are EOS");
     ret = GST_FLOW_EOS;
     goto eos;
   }
@@ -4602,7 +4576,6 @@ pause:
     }
     if (push_eos) {
       /* send EOS, and prevent hanging if no streams yet */
-      GST_ERROR_OBJECT (demux, "Sending EOS, at end of stream");
       if (!gst_matroska_demux_send_event (demux, gst_event_new_eos ()) &&
           (ret == GST_FLOW_EOS)) {
         GST_ELEMENT_ERROR (demux, STREAM, DEMUX,
@@ -4645,8 +4618,7 @@ gst_matroska_demux_chain (GstPad * pad, GstObject * parent, GstBuffer * buffer)
   guint32 id;
   guint64 length;
 
-  GST_ERROR ("chaining");
-  GST_ERROR ("got buffer : %" GST_TIME_FORMAT,
+  GST_DEBUG ("got buffer : %" GST_TIME_FORMAT,
       GST_TIME_ARGS (GST_BUFFER_TIMESTAMP (buffer)));
 
   if (G_UNLIKELY (GST_BUFFER_IS_DISCONT (buffer))) {
