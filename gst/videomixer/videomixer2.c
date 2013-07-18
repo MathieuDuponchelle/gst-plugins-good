@@ -710,8 +710,7 @@ gst_videomixer2_fill_queues (GstVideoMixer2 * mix,
       end_time += start_time;   /* convert from duration to position */
 
       /* Check if it's inside the segment */
-      if (start_time >= segment->stop
-          || end_time < segment->start + segment->offset) {
+      if (start_time >= segment->stop || end_time < segment->start) {
         GST_DEBUG_OBJECT (pad, "Buffer outside the segment");
 
         if (buf == mixcol->queued) {
@@ -728,7 +727,7 @@ gst_videomixer2_fill_queues (GstVideoMixer2 * mix,
       }
 
       /* Clip to segment and convert to running time */
-      start_time = MAX (start_time, segment->start + segment->offset);
+      start_time = MAX (start_time, segment->start);
       if (segment->stop != -1)
         end_time = MIN (end_time, segment->stop);
       start_time =
