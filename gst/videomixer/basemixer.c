@@ -2053,6 +2053,8 @@ gst_basemixer_request_new_pad (GstElement * element,
   GstBasemixer *mix;
   GstBasemixerPad *mixpad;
   GstElementClass *klass = GST_ELEMENT_GET_CLASS (element);
+  GstBasemixerClass *mixer_klass = (GstBasemixerClass *) klass;
+
 
   mix = GST_BASE_MIXER (element);
 
@@ -2074,8 +2076,11 @@ gst_basemixer_request_new_pad (GstElement * element,
     }
     /* create new pad with the name */
     name = g_strdup_printf ("sink_%u", serial);
-    mixpad = g_object_new (GST_TYPE_BASE_MIXER_PAD, "name", name, "direction",
-        templ->direction, "template", templ, NULL);
+    if (mixer_klass->create_new_pad)
+      mixpad = mixer_klass->create_new_pad (mix, templ, name, caps);
+    else
+      mixpad = g_object_new (GST_TYPE_BASE_MIXER_PAD, "name", name, "direction",
+          templ->direction, "template", templ, NULL);
     g_free (name);
 
     mixpad->zorder = mix->numpads;
@@ -2291,6 +2296,8 @@ gst_basemixer_class_init (GstBasemixerClass * klass)
       "Filter/Editor/Video",
       "Mix multiple video streams", "Wim Taymans <wim@fluendo.com>, "
       "Sebastian Dröge <sebastian.droege@collabora.co.uk>");
+
+  klass->create_new_pad = NULL;
 
   /* Register the pad class */
   g_type_class_ref (GST_TYPE_BASE_MIXER_PAD);

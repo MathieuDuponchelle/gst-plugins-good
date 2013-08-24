@@ -24,7 +24,9 @@
 #include <gst/gst.h>
 #include <gst/video/video.h>
 
+#include "basemixerpad.h"
 #include "blend.h"
+
 #include <gst/base/gstcollectpads.h>
 
 G_BEGIN_DECLS
@@ -125,6 +127,9 @@ struct _GstBasemixer
 struct _GstBasemixerClass
 {
   GstElementClass parent_class;
+
+  GstBasemixerPad*               (*create_new_pad)      (GstBasemixer *basemixer, GstPadTemplate *templ,
+							 const gchar* name, const GstCaps *caps);
 };
 
 GType gst_basemixer_get_type (void);

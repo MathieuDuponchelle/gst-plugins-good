@@ -177,15 +177,25 @@ gst_videomixer2_set_property (GObject * object,
 #define gst_videomixer2_parent_class parent_class
 G_DEFINE_TYPE (GstVideoMixer2, gst_videomixer2, GST_TYPE_BASE_MIXER);
 
+static GstBasemixerPad *
+gst_videomixer2_create_new_pad (GstBasemixer * basemixer,
+    GstPadTemplate * templ, const gchar * name, const GstCaps * caps)
+{
+
+}
+
 /* GObject boilerplate */
 static void
 gst_videomixer2_class_init (GstVideoMixer2Class * klass)
 {
   GObjectClass *gobject_class = (GObjectClass *) klass;
   GstElementClass *gstelement_class = (GstElementClass *) klass;
+  GstBasemixerClass *basemixer_class = (GstBasemixerClass *) klass;
 
   gobject_class->get_property = gst_videomixer2_get_property;
   gobject_class->set_property = gst_videomixer2_set_property;
+
+  basemixer_class->create_new_pad = gst_videomixer2_create_new_pad;
 
   g_object_class_install_property (gobject_class, PROP_BACKGROUND,
       g_param_spec_enum ("background", "Background", "Background type",
