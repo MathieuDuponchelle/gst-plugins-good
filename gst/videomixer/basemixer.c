@@ -19,61 +19,19 @@
  */
 
 /**
- * SECTION:element-videomixer
+ * SECTION:gstbasemixer
+ * @short_description: Base class for video mixers
  *
  * Basemixer can accept AYUV, ARGB and BGRA video streams. For each of the requested
  * sink pads it will compare the incoming geometry and framerate to define the
  * output parameters. Indeed output video frames will have the geometry of the
  * biggest incoming video stream and the framerate of the fastest incoming one.
  *
- * Videomixer will do colorspace conversion.
+ * Basemixer will do colorspace conversion.
  * 
- * Individual parameters for each input stream can be configured on the
+ * Zorder for each input stream can be configured on the
  * #GstBasemixerPad.
  *
- * <refsect2>
- * <title>Sample pipelines</title>
- * |[
- * gst-launch-1.0 \
- *   videotestsrc pattern=1 ! \
- *   video/x-raw,format=AYUV,framerate=\(fraction\)10/1,width=100,height=100 ! \
- *   videobox border-alpha=0 top=-70 bottom=-70 right=-220 ! \
- *   videomixer name=mix sink_0::alpha=0.7 sink_1::alpha=0.5 ! \
- *   videoconvert ! xvimagesink \
- *   videotestsrc ! \
- *   video/x-raw,format=AYUV,framerate=\(fraction\)5/1,width=320,height=240 ! mix.
- * ]| A pipeline to demonstrate videomixer used together with videobox.
- * This should show a 320x240 pixels video test source with some transparency
- * showing the background checker pattern. Another video test source with just
- * the snow pattern of 100x100 pixels is overlayed on top of the first one on
- * the left vertically centered with a small transparency showing the first
- * video test source behind and the checker pattern under it. Note that the
- * framerate of the output video is 10 frames per second.
- * |[
- * gst-launch-1.0 videotestsrc pattern=1 ! \
- *   video/x-raw, framerate=\(fraction\)10/1, width=100, height=100 ! \
- *   videomixer name=mix ! videoconvert ! ximagesink \
- *   videotestsrc !  \
- *   video/x-raw, framerate=\(fraction\)5/1, width=320, height=240 ! mix.
- * ]| A pipeline to demostrate bgra mixing. (This does not demonstrate alpha blending). 
- * |[
- * gst-launch-1.0 videotestsrc pattern=1 ! \
- *   video/x-raw,format =I420, framerate=\(fraction\)10/1, width=100, height=100 ! \
- *   videomixer name=mix ! videoconvert ! ximagesink \
- *   videotestsrc ! \
- *   video/x-raw,format=I420, framerate=\(fraction\)5/1, width=320, height=240 ! mix.
- * ]| A pipeline to test I420
- * |[
- * gst-launch-1.0 videomixer name=mixer sink_1::alpha=0.5 sink_1::xpos=50 sink_1::ypos=50 ! \
- *   videoconvert ! ximagesink \
- *   videotestsrc pattern=snow timestamp-offset=3000000000 ! \
- *   "video/x-raw,format=AYUV,width=640,height=480,framerate=(fraction)30/1" ! \
- *   timeoverlay ! queue2 ! mixer. \
- *   videotestsrc pattern=smpte ! \
- *   "video/x-raw,format=AYUV,width=800,height=600,framerate=(fraction)10/1" ! \
- *   timeoverlay ! queue2 ! mixer.
- * ]| A pipeline to demonstrate synchronized mixing (the second stream starts after 3 seconds)
- * </refsect2>
  */
 
 #ifdef HAVE_CONFIG_H
@@ -85,12 +43,6 @@
 #include "basemixer.h"
 #include "basemixerpad.h"
 #include "videoconvert.h"
-
-#ifdef DISABLE_ORC
-#define orc_memset memset
-#else
-#include <orc/orcfunctions.h>
-#endif
 
 GST_DEBUG_CATEGORY_STATIC (gst_basemixer_debug);
 #define GST_CAT_DEFAULT gst_basemixer_debug
@@ -111,8 +63,6 @@ GST_DEBUG_CATEGORY_STATIC (gst_basemixer_debug);
 #define FORMATS " { AYUV, BGRA, ARGB, RGBA, ABGR, Y444, Y42B, YUY2, UYVY, "\
                 "   YVYU, I420, YV12, NV12, NV21, Y41B, RGB, BGR, xRGB, xBGR, "\
                 "   RGBx, BGRx } "
-
-//static GstElementClass *parent_class = NULL;
 
 static GstStaticPadTemplate src_factory = GST_STATIC_PAD_TEMPLATE ("src",
     GST_PAD_SRC,

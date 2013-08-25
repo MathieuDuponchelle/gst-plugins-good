@@ -25,7 +25,6 @@
 #include <gst/video/video.h>
 
 #include "basemixerpad.h"
-#include "blend.h"
 
 #include <gst/base/gstcollectpads.h>
 
@@ -58,7 +57,7 @@ struct _GstBasemixer
   /* pad */
   GstPad *srcpad;
 
-  /* Lock to prevent the state to change while blending */
+  /* Lock to prevent the state to change while mixing */
   GMutex lock;
 
   /* Lock to prevent two src setcaps from happening at the same time  */
