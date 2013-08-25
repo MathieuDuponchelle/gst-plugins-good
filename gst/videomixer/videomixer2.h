@@ -69,6 +69,10 @@ struct _GstVideoMixer2
 {
   GstBasemixer basemixer;
   GstVideoMixer2Background background;
+
+  BlendFunction blend, overlay;
+  FillCheckerFunction fill_checker;
+  FillColorFunction fill_color;
 };
 
 struct _GstVideoMixer2Class

@@ -117,10 +117,6 @@ struct _GstBasemixer
   GstClockTime earliest_time;
   guint64 qos_processed, qos_dropped;
 
-  BlendFunction blend, overlay;
-  FillCheckerFunction fill_checker;
-  FillColorFunction fill_color;
-
   gboolean send_stream_start;
 };
 

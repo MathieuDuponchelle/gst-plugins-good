@@ -1617,13 +1617,10 @@ gst_basemixer_src_setcaps (GstPad * pad, GstBasemixer * mix, GstCaps * caps)
 
   GST_INFO_OBJECT (pad, "set src caps: %" GST_PTR_FORMAT, caps);
 
-  mix->blend = NULL;
-  mix->overlay = NULL;
-  mix->fill_checker = NULL;
-  mix->fill_color = NULL;
-
   if (!gst_video_info_from_caps (&info, caps))
     goto done;
+
+  ret = TRUE;
 
   GST_BASE_MIXER_LOCK (mix);
 
@@ -1638,157 +1635,6 @@ gst_basemixer_src_setcaps (GstPad * pad, GstBasemixer * mix, GstCaps * caps)
 
   mix->info = info;
 
-  switch (GST_VIDEO_INFO_FORMAT (&mix->info)) {
-    case GST_VIDEO_FORMAT_AYUV:
-      mix->blend = gst_video_mixer_blend_ayuv;
-      mix->overlay = gst_video_mixer_overlay_ayuv;
-      mix->fill_checker = gst_video_mixer_fill_checker_ayuv;
-      mix->fill_color = gst_video_mixer_fill_color_ayuv;
-      ret = TRUE;
-      break;
-    case GST_VIDEO_FORMAT_ARGB:
-      mix->blend = gst_video_mixer_blend_argb;
-      mix->overlay = gst_video_mixer_overlay_argb;
-      mix->fill_checker = gst_video_mixer_fill_checker_argb;
-      mix->fill_color = gst_video_mixer_fill_color_argb;
-      ret = TRUE;
-      break;
-    case GST_VIDEO_FORMAT_BGRA:
-      mix->blend = gst_video_mixer_blend_bgra;
-      mix->overlay = gst_video_mixer_overlay_bgra;
-      mix->fill_checker = gst_video_mixer_fill_checker_bgra;
-      mix->fill_color = gst_video_mixer_fill_color_bgra;
-      ret = TRUE;
-      break;
-    case GST_VIDEO_FORMAT_ABGR:
-      mix->blend = gst_video_mixer_blend_abgr;
-      mix->overlay = gst_video_mixer_overlay_abgr;
-      mix->fill_checker = gst_video_mixer_fill_checker_abgr;
-      mix->fill_color = gst_video_mixer_fill_color_abgr;
-      ret = TRUE;
-      break;
-    case GST_VIDEO_FORMAT_RGBA:
-      mix->blend = gst_video_mixer_blend_rgba;
-      mix->overlay = gst_video_mixer_overlay_rgba;
-      mix->fill_checker = gst_video_mixer_fill_checker_rgba;
-      mix->fill_color = gst_video_mixer_fill_color_rgba;
-      ret = TRUE;
-      break;
-    case GST_VIDEO_FORMAT_Y444:
-      mix->blend = gst_video_mixer_blend_y444;
-      mix->overlay = mix->blend;
-      mix->fill_checker = gst_video_mixer_fill_checker_y444;
-      mix->fill_color = gst_video_mixer_fill_color_y444;
-      ret = TRUE;
-      break;
-    case GST_VIDEO_FORMAT_Y42B:
-      mix->blend = gst_video_mixer_blend_y42b;
-      mix->overlay = mix->blend;
-      mix->fill_checker = gst_video_mixer_fill_checker_y42b;
-      mix->fill_color = gst_video_mixer_fill_color_y42b;
-      ret = TRUE;
-      break;
-    case GST_VIDEO_FORMAT_YUY2:
-      mix->blend = gst_video_mixer_blend_yuy2;
-      mix->overlay = mix->blend;
-      mix->fill_checker = gst_video_mixer_fill_checker_yuy2;
-      mix->fill_color = gst_video_mixer_fill_color_yuy2;
-      ret = TRUE;
-      break;
-    case GST_VIDEO_FORMAT_UYVY:
-      mix->blend = gst_video_mixer_blend_uyvy;
-      mix->overlay = mix->blend;
-      mix->fill_checker = gst_video_mixer_fill_checker_uyvy;
-      mix->fill_color = gst_video_mixer_fill_color_uyvy;
-      ret = TRUE;
-      break;
-    case GST_VIDEO_FORMAT_YVYU:
-      mix->blend = gst_video_mixer_blend_yvyu;
-      mix->overlay = mix->blend;
-      mix->fill_checker = gst_video_mixer_fill_checker_yvyu;
-      mix->fill_color = gst_video_mixer_fill_color_yvyu;
-      ret = TRUE;
-      break;
-    case GST_VIDEO_FORMAT_I420:
-      mix->blend = gst_video_mixer_blend_i420;
-      mix->overlay = mix->blend;
-      mix->fill_checker = gst_video_mixer_fill_checker_i420;
-      mix->fill_color = gst_video_mixer_fill_color_i420;
-      ret = TRUE;
-      break;
-    case GST_VIDEO_FORMAT_YV12:
-      mix->blend = gst_video_mixer_blend_yv12;
-      mix->overlay = mix->blend;
-      mix->fill_checker = gst_video_mixer_fill_checker_yv12;
-      mix->fill_color = gst_video_mixer_fill_color_yv12;
-      ret = TRUE;
-      break;
-    case GST_VIDEO_FORMAT_NV12:
-      mix->blend = gst_video_mixer_blend_nv12;
-      mix->overlay = mix->blend;
-      mix->fill_checker = gst_video_mixer_fill_checker_nv12;
-      mix->fill_color = gst_video_mixer_fill_color_nv12;
-      ret = TRUE;
-      break;
-    case GST_VIDEO_FORMAT_NV21:
-      mix->blend = gst_video_mixer_blend_nv21;
-      mix->overlay = mix->blend;
-      mix->fill_checker = gst_video_mixer_fill_checker_nv21;
-      mix->fill_color = gst_video_mixer_fill_color_nv21;
-      ret = TRUE;
-      break;
-    case GST_VIDEO_FORMAT_Y41B:
-      mix->blend = gst_video_mixer_blend_y41b;
-      mix->overlay = mix->blend;
-      mix->fill_checker = gst_video_mixer_fill_checker_y41b;
-      mix->fill_color = gst_video_mixer_fill_color_y41b;
-      ret = TRUE;
-      break;
-    case GST_VIDEO_FORMAT_RGB:
-      mix->blend = gst_video_mixer_blend_rgb;
-      mix->overlay = mix->blend;
-      mix->fill_checker = gst_video_mixer_fill_checker_rgb;
-      mix->fill_color = gst_video_mixer_fill_color_rgb;
-      ret = TRUE;
-      break;
-    case GST_VIDEO_FORMAT_BGR:
-      mix->blend = gst_video_mixer_blend_bgr;
-      mix->overlay = mix->blend;
-      mix->fill_checker = gst_video_mixer_fill_checker_bgr;
-      mix->fill_color = gst_video_mixer_fill_color_bgr;
-      ret = TRUE;
-      break;
-    case GST_VIDEO_FORMAT_xRGB:
-      mix->blend = gst_video_mixer_blend_xrgb;
-      mix->overlay = mix->blend;
-      mix->fill_checker = gst_video_mixer_fill_checker_xrgb;
-      mix->fill_color = gst_video_mixer_fill_color_xrgb;
-      ret = TRUE;
-      break;
-    case GST_VIDEO_FORMAT_xBGR:
-      mix->blend = gst_video_mixer_blend_xbgr;
-      mix->overlay = mix->blend;
-      mix->fill_checker = gst_video_mixer_fill_checker_xbgr;
-      mix->fill_color = gst_video_mixer_fill_color_xbgr;
-      ret = TRUE;
-      break;
-    case GST_VIDEO_FORMAT_RGBx:
-      mix->blend = gst_video_mixer_blend_rgbx;
-      mix->overlay = mix->blend;
-      mix->fill_checker = gst_video_mixer_fill_checker_rgbx;
-      mix->fill_color = gst_video_mixer_fill_color_rgbx;
-      ret = TRUE;
-      break;
-    case GST_VIDEO_FORMAT_BGRx:
-      mix->blend = gst_video_mixer_blend_bgrx;
-      mix->overlay = mix->blend;
-      mix->fill_checker = gst_video_mixer_fill_checker_bgrx;
-      mix->fill_color = gst_video_mixer_fill_color_bgrx;
-      ret = TRUE;
-      break;
-    default:
-      break;
-  }
   GST_BASE_MIXER_UNLOCK (mix);
 
   if (mix->current_caps == NULL ||
