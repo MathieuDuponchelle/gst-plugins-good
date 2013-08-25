@@ -481,17 +481,17 @@ gst_videomixer2_mix_frames (GstBasemixer * mix, GstVideoFrame * outframe)
 
   /* default to blending */
   composite = video_mixer->blend;
-  switch (mix->background) {
-    case BASE_MIXER_BACKGROUND_CHECKER:
+  switch (video_mixer->background) {
+    case VIDEO_MIXER2_BACKGROUND_CHECKER:
       video_mixer->fill_checker (outframe);
       break;
-    case BASE_MIXER_BACKGROUND_BLACK:
+    case VIDEO_MIXER2_BACKGROUND_BLACK:
       video_mixer->fill_color (outframe, 16, 128, 128);
       break;
-    case BASE_MIXER_BACKGROUND_WHITE:
+    case VIDEO_MIXER2_BACKGROUND_WHITE:
       video_mixer->fill_color (outframe, 240, 128, 128);
       break;
-    case BASE_MIXER_BACKGROUND_TRANSPARENT:
+    case VIDEO_MIXER2_BACKGROUND_TRANSPARENT:
     {
       guint i, plane, num_planes, height;
 

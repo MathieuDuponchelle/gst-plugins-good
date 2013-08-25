@@ -682,35 +682,6 @@ gst_basemixer_pad_init (GstBasemixerPad * mixerpad)
 }
 
 /* GstBasemixer */
-#define DEFAULT_BACKGROUND BASE_MIXER_BACKGROUND_CHECKER
-enum
-{
-  PROP_0,
-  PROP_BACKGROUND
-};
-
-#define GST_TYPE_BASE_MIXER_BACKGROUND (gst_basemixer_background_get_type())
-static GType
-gst_basemixer_background_get_type (void)
-{
-  static GType video_mixer_background_type = 0;
-
-  static const GEnumValue video_mixer_background[] = {
-    {BASE_MIXER_BACKGROUND_CHECKER, "Checker pattern", "checker"},
-    {BASE_MIXER_BACKGROUND_BLACK, "Black", "black"},
-    {BASE_MIXER_BACKGROUND_WHITE, "White", "white"},
-    {BASE_MIXER_BACKGROUND_TRANSPARENT,
-        "Transparent Background to enable further mixing", "transparent"},
-    {0, NULL, NULL},
-  };
-
-  if (!video_mixer_background_type) {
-    video_mixer_background_type =
-        g_enum_register_static ("GstBasemixerBackground",
-        video_mixer_background);
-  }
-  return video_mixer_background_type;
-}
 
 #define gst_basemixer_parent_class parent_class
 G_DEFINE_ABSTRACT_TYPE_WITH_CODE (GstBasemixer, gst_basemixer, GST_TYPE_ELEMENT,
@@ -1988,12 +1959,7 @@ static void
 gst_basemixer_get_property (GObject * object,
     guint prop_id, GValue * value, GParamSpec * pspec)
 {
-  GstBasemixer *mix = GST_BASE_MIXER (object);
-
   switch (prop_id) {
-    case PROP_BACKGROUND:
-      g_value_set_enum (value, mix->background);
-      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -2004,12 +1970,7 @@ static void
 gst_basemixer_set_property (GObject * object,
     guint prop_id, const GValue * value, GParamSpec * pspec)
 {
-  GstBasemixer *mix = GST_BASE_MIXER (object);
-
   switch (prop_id) {
-    case PROP_BACKGROUND:
-      mix->background = g_value_get_enum (value);
-      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -2069,11 +2030,6 @@ gst_basemixer_class_init (GstBasemixerClass * klass)
   gobject_class->get_property = gst_basemixer_get_property;
   gobject_class->set_property = gst_basemixer_set_property;
 
-  g_object_class_install_property (gobject_class, PROP_BACKGROUND,
-      g_param_spec_enum ("background", "Background", "Background type",
-          GST_TYPE_BASE_MIXER_BACKGROUND,
-          DEFAULT_BACKGROUND, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
-
   gstelement_class->request_new_pad =
       GST_DEBUG_FUNCPTR (gst_basemixer_request_new_pad);
   gstelement_class->release_pad = GST_DEBUG_FUNCPTR (gst_basemixer_release_pad);
@@ -2111,7 +2067,6 @@ gst_basemixer_init (GstBasemixer * mix)
   gst_element_add_pad (GST_ELEMENT (mix), mix->srcpad);
 
   mix->collect = gst_collect_pads_new ();
-  mix->background = DEFAULT_BACKGROUND;
   mix->current_caps = NULL;
 
   gst_collect_pads_set_function (mix->collect,

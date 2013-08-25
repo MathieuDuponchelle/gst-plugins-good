@@ -45,24 +45,6 @@ typedef struct _GstBasemixer GstBasemixer;
 typedef struct _GstBasemixerClass GstBasemixerClass;
 
 /**
- * GstBasemixerBackground:
- * @BASE_MIXER_BACKGROUND_CHECKER: checker pattern background
- * @BASE_MIXER_BACKGROUND_BLACK: solid color black background
- * @BASE_MIXER_BACKGROUND_WHITE: solid color white background
- * @BASE_MIXER_BACKGROUND_TRANSPARENT: background is left transparent and layers are composited using "A OVER B" composition rules. This is only applicable to AYUV and ARGB (and variants) as it preserves the alpha channel and allows for further mixing.
- *
- * The different backgrounds videomixer can blend over.
- */
-typedef enum
-{
-  BASE_MIXER_BACKGROUND_CHECKER,
-  BASE_MIXER_BACKGROUND_BLACK,
-  BASE_MIXER_BACKGROUND_WHITE,
-  BASE_MIXER_BACKGROUND_TRANSPARENT,
-}
-GstBasemixerBackground;
-
-/**
  * GstBasemixer:
  *
  * The opaque #GstBasemixer structure.
@@ -104,8 +86,6 @@ struct _GstBasemixer
                                   following buffer */
   gboolean waiting_flush_stop; /* Used when we receive a flush_start to make
                                   sure to forward the flush_stop only once */
-
-  GstBasemixerBackground background;
 
   /* Current downstream segment */
   GstSegment segment;
