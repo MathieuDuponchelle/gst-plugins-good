@@ -26,9 +26,6 @@
 
 #include <gst/base/gstcollectpads.h>
 
-#include "basemixerpad.h"
-#include "videoconvert.h"
-
 G_BEGIN_DECLS
 
 #define GST_TYPE_VIDEO_MIXER2_PAD (gst_videomixer2_pad_get_type())
