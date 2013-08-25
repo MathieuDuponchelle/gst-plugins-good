@@ -147,16 +147,10 @@ struct _GstBasemixerCollect
 };
 
 #define DEFAULT_PAD_ZORDER 0
-#define DEFAULT_PAD_XPOS   0
-#define DEFAULT_PAD_YPOS   0
-#define DEFAULT_PAD_ALPHA  1.0
 enum
 {
   PROP_PAD_0,
   PROP_PAD_ZORDER,
-  PROP_PAD_XPOS,
-  PROP_PAD_YPOS,
-  PROP_PAD_ALPHA
 };
 
 G_DEFINE_TYPE (GstBasemixerPad, gst_basemixer_pad, GST_TYPE_PAD);
@@ -180,6 +174,8 @@ gst_basemixer_update_src_caps (GstBasemixer * mix)
   gdouble best_fps = -1, cur_fps;
   gint best_fps_n = -1, best_fps_d = -1;
   gboolean ret = TRUE;
+  GstElementClass *klass = GST_ELEMENT_GET_CLASS (mix);
+  GstBasemixerClass *mixer_klass = (GstBasemixerClass *) klass;
 
   GST_BASE_MIXER_SETCAPS_LOCK (mix);
   GST_BASE_MIXER_LOCK (mix);
@@ -198,8 +194,8 @@ gst_basemixer_update_src_caps (GstBasemixer * mix)
     if (width == 0 || height == 0)
       continue;
 
-    this_width = width + MAX (mpad->xpos, 0);
-    this_height = height + MAX (mpad->ypos, 0);
+    this_width = width;
+    this_height = height;
 
     if (best_width < this_width)
       best_width = this_width;
@@ -244,6 +240,13 @@ gst_basemixer_update_src_caps (GstBasemixer * mix)
     info.par_n = GST_VIDEO_INFO_PAR_N (&mix->info);
     info.par_d = GST_VIDEO_INFO_PAR_D (&mix->info);
 
+    if (mixer_klass->modify_src_pad_info)
+      if (!mixer_klass->modify_src_pad_info (mix, &info)) {
+        ret = FALSE;
+        GST_BASE_MIXER_UNLOCK (mix);
+        goto done;
+      }
+
     caps = gst_video_info_to_caps (&info);
 
     peercaps = gst_pad_peer_query_caps (mix->srcpad, NULL);
@@ -268,8 +271,8 @@ gst_basemixer_update_src_caps (GstBasemixer * mix)
 
       caps = gst_caps_truncate (caps);
       s = gst_caps_get_structure (caps, 0);
-      gst_structure_fixate_field_nearest_int (s, "width", best_width);
-      gst_structure_fixate_field_nearest_int (s, "height", best_height);
+      gst_structure_fixate_field_nearest_int (s, "width", info.width);
+      gst_structure_fixate_field_nearest_int (s, "height", info.height);
       gst_structure_fixate_field_nearest_fraction (s, "framerate", best_fps_n,
           best_fps_d);
 
@@ -618,15 +621,6 @@ gst_basemixer_pad_get_property (GObject * object, guint prop_id,
     case PROP_PAD_ZORDER:
       g_value_set_uint (value, pad->zorder);
       break;
-    case PROP_PAD_XPOS:
-      g_value_set_int (value, pad->xpos);
-      break;
-    case PROP_PAD_YPOS:
-      g_value_set_int (value, pad->ypos);
-      break;
-    case PROP_PAD_ALPHA:
-      g_value_set_double (value, pad->alpha);
-      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -655,15 +649,6 @@ gst_basemixer_pad_set_property (GObject * object, guint prop_id,
           (GCompareFunc) pad_zorder_compare);
       GST_BASE_MIXER_UNLOCK (mix);
       break;
-    case PROP_PAD_XPOS:
-      pad->xpos = g_value_get_int (value);
-      break;
-    case PROP_PAD_YPOS:
-      pad->ypos = g_value_get_int (value);
-      break;
-    case PROP_PAD_ALPHA:
-      pad->alpha = g_value_get_double (value);
-      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -684,29 +669,16 @@ gst_basemixer_pad_class_init (GstBasemixerPadClass * klass)
       g_param_spec_uint ("zorder", "Z-Order", "Z Order of the picture",
           0, 10000, DEFAULT_PAD_ZORDER,
           G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
-  g_object_class_install_property (gobject_class, PROP_PAD_XPOS,
-      g_param_spec_int ("xpos", "X Position", "X Position of the picture",
-          G_MININT, G_MAXINT, DEFAULT_PAD_XPOS,
-          G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
-  g_object_class_install_property (gobject_class, PROP_PAD_YPOS,
-      g_param_spec_int ("ypos", "Y Position", "Y Position of the picture",
-          G_MININT, G_MAXINT, DEFAULT_PAD_YPOS,
-          G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
-  g_object_class_install_property (gobject_class, PROP_PAD_ALPHA,
-      g_param_spec_double ("alpha", "Alpha", "Alpha of the picture", 0.0, 1.0,
-          DEFAULT_PAD_ALPHA,
-          G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
 }
 
 static void
 gst_basemixer_pad_init (GstBasemixerPad * mixerpad)
 {
   mixerpad->zorder = DEFAULT_PAD_ZORDER;
-  mixerpad->xpos = DEFAULT_PAD_XPOS;
-  mixerpad->ypos = DEFAULT_PAD_YPOS;
-  mixerpad->alpha = DEFAULT_PAD_ALPHA;
   mixerpad->convert = NULL;
   mixerpad->need_conversion_update = FALSE;
+  mixerpad->mixed_frame = NULL;
+  mixerpad->converted_buffer = NULL;
 }
 
 /* GstBasemixer */
@@ -993,9 +965,12 @@ gst_basemixer_blend_buffers (GstBasemixer * mix,
 {
   GSList *l;
   guint outsize;
-  BlendFunction composite;
   GstVideoFrame outframe;
   static GstAllocationParams params = { 0, 15, 0, 0, };
+  GstElementClass *klass = GST_ELEMENT_GET_CLASS (mix);
+  GstBasemixerClass *mixer_klass = (GstBasemixerClass *) klass;
+
+  g_assert (mixer_klass->mix_frames != NULL);
 
   outsize = GST_VIDEO_INFO_SIZE (&mix->info);
 
@@ -1005,44 +980,7 @@ gst_basemixer_blend_buffers (GstBasemixer * mix,
 
   gst_video_frame_map (&outframe, &mix->info, *outbuf, GST_MAP_READWRITE);
 
-  /* default to blending */
-  composite = mix->blend;
-  switch (mix->background) {
-    case BASE_MIXER_BACKGROUND_CHECKER:
-      mix->fill_checker (&outframe);
-      break;
-    case BASE_MIXER_BACKGROUND_BLACK:
-      mix->fill_color (&outframe, 16, 128, 128);
-      break;
-    case BASE_MIXER_BACKGROUND_WHITE:
-      mix->fill_color (&outframe, 240, 128, 128);
-      break;
-    case BASE_MIXER_BACKGROUND_TRANSPARENT:
-    {
-      guint i, plane, num_planes, height;
-
-      num_planes = GST_VIDEO_FRAME_N_PLANES (&outframe);
-      for (plane = 0; plane < num_planes; ++plane) {
-        guint8 *pdata;
-        gsize rowsize, plane_stride;
-
-        pdata = GST_VIDEO_FRAME_PLANE_DATA (&outframe, plane);
-        plane_stride = GST_VIDEO_FRAME_PLANE_STRIDE (&outframe, plane);
-        rowsize = GST_VIDEO_FRAME_COMP_WIDTH (&outframe, plane)
-            * GST_VIDEO_FRAME_COMP_PSTRIDE (&outframe, plane);
-        height = GST_VIDEO_FRAME_COMP_HEIGHT (&outframe, plane);
-        for (i = 0; i < height; ++i) {
-          memset (pdata, 0, rowsize);
-          pdata += plane_stride;
-        }
-      }
-
-      /* use overlay to keep background transparent */
-      composite = mix->overlay;
-      break;
-    }
-  }
-
+  /* Here we convert all the frames the subclass will have to mix */
   for (l = mix->sinkpads; l; l = l->next) {
     GstBasemixerPad *pad = l->data;
     GstBasemixerCollect *mixcol = pad->mixcol;
@@ -1051,9 +989,9 @@ gst_basemixer_blend_buffers (GstBasemixer * mix,
       GstClockTime timestamp;
       gint64 stream_time;
       GstSegment *seg;
-      GstVideoFrame converted_frame;
+      GstVideoFrame *converted_frame = g_slice_new0 (GstVideoFrame);
       GstBuffer *converted_buf = NULL;
-      GstVideoFrame frame;
+      GstVideoFrame *frame = g_slice_new0 (GstVideoFrame);
 
       seg = &mixcol->collect.segment;
 
@@ -1066,7 +1004,7 @@ gst_basemixer_blend_buffers (GstBasemixer * mix,
       if (GST_CLOCK_TIME_IS_VALID (stream_time))
         gst_object_sync_values (GST_OBJECT (pad), stream_time);
 
-      gst_video_frame_map (&frame, &pad->info, mixcol->buffer, GST_MAP_READ);
+      gst_video_frame_map (frame, &pad->info, mixcol->buffer, GST_MAP_READ);
 
       if (pad->convert) {
         gint converted_size;
@@ -1084,21 +1022,34 @@ gst_basemixer_blend_buffers (GstBasemixer * mix,
         converted_size = converted_size > outsize ? converted_size : outsize;
         converted_buf = gst_buffer_new_allocate (NULL, converted_size, &params);
 
-        gst_video_frame_map (&converted_frame, &(pad->conversion_info),
+        gst_video_frame_map (converted_frame, &(pad->conversion_info),
             converted_buf, GST_MAP_READWRITE);
-        videomixer_videoconvert_convert_convert (pad->convert, &converted_frame,
-            &frame);
-        gst_video_frame_unmap (&frame);
+        videomixer_videoconvert_convert_convert (pad->convert, converted_frame,
+            frame);
+        pad->converted_buffer = converted_buf;
+        gst_video_frame_unmap (frame);
       } else {
         converted_frame = frame;
       }
 
-      composite (&converted_frame, pad->xpos, pad->ypos, pad->alpha, &outframe);
+      pad->mixed_frame = converted_frame;
+    }
+  }
 
-      if (pad->convert)
-        gst_buffer_unref (converted_buf);
+  mixer_klass->mix_frames (mix, &outframe);
 
-      gst_video_frame_unmap (&converted_frame);
+  for (l = mix->sinkpads; l; l = l->next) {
+    GstBasemixerPad *pad = l->data;
+
+    if (pad->mixed_frame) {
+      gst_video_frame_unmap (pad->mixed_frame);
+      g_slice_free (GstVideoFrame, pad->mixed_frame);
+      pad->mixed_frame = NULL;
+    }
+
+    if (pad->converted_buffer) {
+      gst_buffer_unref (pad->converted_buffer);
+      pad->converted_buffer = NULL;
     }
   }
   gst_video_frame_unmap (&outframe);
@@ -2055,7 +2006,6 @@ gst_basemixer_request_new_pad (GstElement * element,
   GstElementClass *klass = GST_ELEMENT_GET_CLASS (element);
   GstBasemixerClass *mixer_klass = (GstBasemixerClass *) klass;
 
-
   mix = GST_BASE_MIXER (element);
 
   if (templ == gst_element_class_get_pad_template (klass, "sink_%u")) {
@@ -2084,9 +2034,6 @@ gst_basemixer_request_new_pad (GstElement * element,
     g_free (name);
 
     mixpad->zorder = mix->numpads;
-    mixpad->xpos = DEFAULT_PAD_XPOS;
-    mixpad->ypos = DEFAULT_PAD_YPOS;
-    mixpad->alpha = DEFAULT_PAD_ALPHA;
 
     mixcol = (GstBasemixerCollect *)
         gst_collect_pads_add_pad (mix->collect, GST_PAD (mixpad),

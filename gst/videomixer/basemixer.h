@@ -130,6 +130,8 @@ struct _GstBasemixerClass
 
   GstBasemixerPad*               (*create_new_pad)      (GstBasemixer *basemixer, GstPadTemplate *templ,
 							 const gchar* name, const GstCaps *caps);
+  gboolean			 (*modify_src_pad_info) (GstBasemixer *basemixer, GstVideoInfo *info);
+  GstFlowReturn                  (*mix_frames)          (GstBasemixer *basemixer, GstVideoFrame *outframe);
 };
 
 GType gst_basemixer_get_type (void);

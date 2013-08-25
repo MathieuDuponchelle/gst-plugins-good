@@ -59,9 +59,7 @@ struct _GstBasemixerPad
   GstVideoInfo info;
 
   /* properties */
-  gint xpos, ypos;
   guint zorder;
-  gdouble alpha;
 
   GstBasemixerCollect *mixcol;
 
@@ -70,8 +68,10 @@ struct _GstBasemixerPad
 
   /* Converter, if NULL no conversion is done */
   VideoConvert *convert;
-
   gboolean need_conversion_update;
+  GstBuffer *converted_buffer;
+
+  GstVideoFrame *mixed_frame;
 };
 
 struct _GstBasemixerPadClass

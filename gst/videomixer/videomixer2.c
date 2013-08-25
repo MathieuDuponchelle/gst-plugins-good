@@ -83,6 +83,7 @@
 #include <string.h>
 
 #include "videomixer2.h"
+#include "videomixer2pad.h"
 #include "videoconvert.h"
 
 #ifdef DISABLE_ORC
@@ -110,6 +111,86 @@ enum
   PROP_PAD_YPOS,
   PROP_PAD_ALPHA
 };
+
+G_DEFINE_TYPE (GstVideomixer2Pad, gst_videomixer2_pad, GST_TYPE_BASE_MIXER_PAD);
+
+static void
+gst_videomixer2_pad_get_property (GObject * object, guint prop_id,
+    GValue * value, GParamSpec * pspec)
+{
+  GstVideomixer2Pad *pad = GST_VIDEO_MIXER2_PAD (object);
+
+  switch (prop_id) {
+    case PROP_PAD_ZORDER:
+      g_value_set_uint (value, pad->zorder);
+      break;
+    case PROP_PAD_XPOS:
+      g_value_set_int (value, pad->xpos);
+      break;
+    case PROP_PAD_YPOS:
+      g_value_set_int (value, pad->ypos);
+      break;
+    case PROP_PAD_ALPHA:
+      g_value_set_double (value, pad->alpha);
+      break;
+    default:
+      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+      break;
+  }
+}
+
+static void
+gst_videomixer2_pad_set_property (GObject * object, guint prop_id,
+    const GValue * value, GParamSpec * pspec)
+{
+  GstVideomixer2Pad *pad = GST_VIDEO_MIXER2_PAD (object);
+
+  switch (prop_id) {
+    case PROP_PAD_XPOS:
+      pad->xpos = g_value_get_int (value);
+      break;
+    case PROP_PAD_YPOS:
+      pad->ypos = g_value_get_int (value);
+      break;
+    case PROP_PAD_ALPHA:
+      pad->alpha = g_value_get_double (value);
+      break;
+    default:
+      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+      break;
+  }
+}
+
+static void
+gst_videomixer2_pad_class_init (GstVideomixer2PadClass * klass)
+{
+  GObjectClass *gobject_class = (GObjectClass *) klass;
+
+  gobject_class->set_property = gst_videomixer2_pad_set_property;
+  gobject_class->get_property = gst_videomixer2_pad_get_property;
+
+  g_object_class_install_property (gobject_class, PROP_PAD_XPOS,
+      g_param_spec_int ("xpos", "X Position", "X Position of the picture",
+          G_MININT, G_MAXINT, DEFAULT_PAD_XPOS,
+          G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property (gobject_class, PROP_PAD_YPOS,
+      g_param_spec_int ("ypos", "Y Position", "Y Position of the picture",
+          G_MININT, G_MAXINT, DEFAULT_PAD_YPOS,
+          G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property (gobject_class, PROP_PAD_ALPHA,
+      g_param_spec_double ("alpha", "Alpha", "Alpha of the picture", 0.0, 1.0,
+          DEFAULT_PAD_ALPHA,
+          G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+}
+
+static void
+gst_videomixer2_pad_init (GstVideomixer2Pad * mixerpad)
+{
+  mixerpad->xpos = DEFAULT_PAD_XPOS;
+  mixerpad->ypos = DEFAULT_PAD_YPOS;
+  mixerpad->alpha = DEFAULT_PAD_ALPHA;
+}
+
 
 /* GstVideoMixer2 */
 #define DEFAULT_BACKGROUND VIDEO_MIXER2_BACKGROUND_CHECKER
@@ -181,7 +262,106 @@ static GstBasemixerPad *
 gst_videomixer2_create_new_pad (GstBasemixer * basemixer,
     GstPadTemplate * templ, const gchar * name, const GstCaps * caps)
 {
+  GstVideomixer2Pad *new_pad;
 
+  new_pad = g_object_new (GST_TYPE_VIDEO_MIXER2_PAD, "name", name, "direction",
+      templ->direction, "template", templ, NULL);
+
+  return GST_BASE_MIXER_PAD (new_pad);
+}
+
+static gboolean
+gst_videomixer2_modify_src_pad_info (GstBasemixer * mix, GstVideoInfo * info)
+{
+  GSList *l;
+  gint best_width = -1, best_height = -1;
+  gboolean ret = FALSE;
+
+  for (l = mix->sinkpads; l; l = l->next) {
+    GstBasemixerPad *base_mixer_pad = l->data;
+    GstVideomixer2Pad *video_mixer_pad = GST_VIDEO_MIXER2_PAD (base_mixer_pad);
+    gint this_width, this_height;
+    gint width, height;
+
+    width = GST_VIDEO_INFO_WIDTH (&base_mixer_pad->info);
+    height = GST_VIDEO_INFO_HEIGHT (&base_mixer_pad->info);
+
+    if (width == 0 || height == 0)
+      continue;
+
+    this_width = width + MAX (video_mixer_pad->xpos, 0);
+    this_height = height + MAX (video_mixer_pad->ypos, 0);
+
+    if (best_width < this_width)
+      best_width = this_width;
+    if (best_height < this_height)
+      best_height = this_height;
+  }
+
+  if (best_width > 0 && best_height > 0) {
+    gst_video_info_set_format (info, GST_VIDEO_INFO_FORMAT (info),
+        best_width, best_height);
+    ret = TRUE;
+  }
+
+  return ret;
+}
+
+static GstFlowReturn
+gst_videomixer2_mix_frames (GstBasemixer * mix, GstVideoFrame * outframe)
+{
+  GSList *l;
+  BlendFunction composite;
+
+  /* default to blending */
+  composite = mix->blend;
+  switch (mix->background) {
+    case BASE_MIXER_BACKGROUND_CHECKER:
+      mix->fill_checker (outframe);
+      break;
+    case BASE_MIXER_BACKGROUND_BLACK:
+      mix->fill_color (outframe, 16, 128, 128);
+      break;
+    case BASE_MIXER_BACKGROUND_WHITE:
+      mix->fill_color (outframe, 240, 128, 128);
+      break;
+    case BASE_MIXER_BACKGROUND_TRANSPARENT:
+    {
+      guint i, plane, num_planes, height;
+
+      num_planes = GST_VIDEO_FRAME_N_PLANES (outframe);
+      for (plane = 0; plane < num_planes; ++plane) {
+        guint8 *pdata;
+        gsize rowsize, plane_stride;
+
+        pdata = GST_VIDEO_FRAME_PLANE_DATA (outframe, plane);
+        plane_stride = GST_VIDEO_FRAME_PLANE_STRIDE (outframe, plane);
+        rowsize = GST_VIDEO_FRAME_COMP_WIDTH (outframe, plane)
+            * GST_VIDEO_FRAME_COMP_PSTRIDE (outframe, plane);
+        height = GST_VIDEO_FRAME_COMP_HEIGHT (outframe, plane);
+        for (i = 0; i < height; ++i) {
+          memset (pdata, 0, rowsize);
+          pdata += plane_stride;
+        }
+      }
+
+      /* use overlay to keep background transparent */
+      composite = mix->overlay;
+      break;
+    }
+  }
+
+  for (l = mix->sinkpads; l; l = l->next) {
+    GstBasemixerPad *pad = l->data;
+    GstVideomixer2Pad *mixer_pad = GST_VIDEO_MIXER2_PAD (pad);
+
+    if (pad->mixed_frame != NULL) {
+      composite (pad->mixed_frame, mixer_pad->xpos, mixer_pad->ypos,
+          mixer_pad->alpha, outframe);
+    }
+  }
+
+  return GST_FLOW_OK;
 }
 
 /* GObject boilerplate */
@@ -196,6 +376,8 @@ gst_videomixer2_class_init (GstVideoMixer2Class * klass)
   gobject_class->set_property = gst_videomixer2_set_property;
 
   basemixer_class->create_new_pad = gst_videomixer2_create_new_pad;
+  basemixer_class->modify_src_pad_info = gst_videomixer2_modify_src_pad_info;
+  basemixer_class->mix_frames = gst_videomixer2_mix_frames;
 
   g_object_class_install_property (gobject_class, PROP_BACKGROUND,
       g_param_spec_enum ("background", "Background", "Background type",
