@@ -309,8 +309,10 @@ gst_videomixer2_update_converters (GstVideoMixer2 * mix)
   best_format = GST_VIDEO_FORMAT_UNKNOWN;
   gst_video_info_init (&best_info);
 
-  downstream_caps = gst_pad_get_pad_template_caps (mix->srcpad);
-  possible_caps = gst_caps_copy (mix->current_caps);
+  downstream_caps = gst_pad_get_allowed_caps (mix->srcpad);
+
+  if (gst_caps_is_empty (downstream_caps))
+    return FALSE;
 
   /* first find new preferred format */
   for (tmp = mix->sinkpads; tmp; tmp = tmp->next) {
@@ -327,12 +329,15 @@ gst_videomixer2_update_converters (GstVideoMixer2 * mix)
     if (GST_VIDEO_INFO_FORMAT (&pad->info) == GST_VIDEO_FORMAT_UNKNOWN)
       continue;
 
-    gst_caps_set_simple (possible_caps, "format", G_TYPE_STRING,
-        gst_video_format_to_string (GST_VIDEO_INFO_FORMAT (&pad->info)), NULL);
+    possible_caps = gst_video_info_to_caps (&pad->info);
 
     /* Can downstream accept this format ? */
-    if (!gst_caps_can_intersect (downstream_caps, possible_caps))
+    if (!gst_caps_can_intersect (downstream_caps, possible_caps)) {
+      gst_caps_unref (possible_caps);
       continue;
+    }
+
+    gst_caps_unref (possible_caps);
 
     formats[GST_VIDEO_INFO_FORMAT (&pad->info)] += 1;
 
@@ -348,7 +353,12 @@ gst_videomixer2_update_converters (GstVideoMixer2 * mix)
     }
   }
 
-  gst_caps_unref (possible_caps);
+  if (best_format == GST_VIDEO_FORMAT_UNKNOWN) {
+    downstream_caps = gst_caps_fixate (downstream_caps);
+    gst_video_info_from_caps (&best_info, downstream_caps);
+    best_format = GST_VIDEO_INFO_FORMAT (&best_info);
+  }
+
   gst_caps_unref (downstream_caps);
 
   best_colorimetry = gst_video_colorimetry_to_string (&(best_info.colorimetry));
@@ -367,6 +377,9 @@ gst_videomixer2_update_converters (GstVideoMixer2 * mix)
     pad = tmp->data;
 
     if (!pad->info.finfo)
+      continue;
+
+    if (GST_VIDEO_INFO_FORMAT (&pad->info) == GST_VIDEO_FORMAT_UNKNOWN)
       continue;
 
     if (pad->convert)
@@ -433,28 +446,18 @@ gst_videomixer2_pad_sink_setcaps (GstPad * pad, GstObject * parent,
       GST_VIDEO_MIXER2_UNLOCK (mix);
       return FALSE;
     }
-    if (GST_VIDEO_INFO_FORMAT (&mix->info) != GST_VIDEO_INFO_FORMAT (&info)) {
-      gboolean ret;
-      mixpad->info = info;
-
-      GST_COLLECT_PADS_STREAM_LOCK (mix->collect);
-
-      ret = gst_videomixer2_update_converters (mix);
-
-      GST_VIDEO_MIXER2_UNLOCK (mix);
-      ret = gst_videomixer2_update_src_caps (mix);
-      GST_COLLECT_PADS_STREAM_UNLOCK (mix->collect);
-
-      return ret;
-    }
   }
 
-  mix->info = info;
   mixpad->info = info;
 
-  GST_VIDEO_MIXER2_UNLOCK (mix);
+  GST_COLLECT_PADS_STREAM_LOCK (mix->collect);
 
-  ret = gst_videomixer2_update_src_caps (mix);
+  ret = gst_videomixer2_update_converters (mix);
+
+  GST_VIDEO_MIXER2_UNLOCK (mix);
+  if (ret)
+    ret = gst_videomixer2_update_src_caps (mix);
+  GST_COLLECT_PADS_STREAM_UNLOCK (mix->collect);
 
 beach:
   return ret;
@@ -1291,7 +1294,8 @@ gst_videomixer2_query_caps (GstPad * pad, GstObject * parent, GstQuery * query)
 
   gst_query_parse_caps (query, &filter);
 
-  if (GST_VIDEO_INFO_FORMAT (&mix->info) != GST_VIDEO_FORMAT_UNKNOWN)
+  if (mix->current_caps
+      && GST_VIDEO_INFO_FORMAT (&mix->info) != GST_VIDEO_FORMAT_UNKNOWN)
     caps = gst_caps_ref (mix->current_caps);
 
   if (caps == NULL)
