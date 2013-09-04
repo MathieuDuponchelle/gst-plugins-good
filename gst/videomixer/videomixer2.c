@@ -298,13 +298,14 @@ gst_videomixer2_update_converters (GstVideoMixer2 * mix)
   GSList *tmp;
   GstVideoFormat best_format;
   GstVideoInfo best_info;
-  guint formats[GST_VIDEO_FORMAT_LAST] = { 0 };
   GstVideoMixer2Pad *pad;
   gboolean need_alpha = FALSE;
   GstCaps *downstream_caps;
   GstCaps *possible_caps;
   gchar *best_colorimetry;
   const gchar *best_chroma;
+  GHashTable *formats_table = g_hash_table_new (g_direct_hash, g_direct_equal);
+  gint best_format_number = 0;
 
   best_format = GST_VIDEO_FORMAT_UNKNOWN;
   gst_video_info_init (&best_info);
@@ -317,6 +318,7 @@ gst_videomixer2_update_converters (GstVideoMixer2 * mix)
   /* first find new preferred format */
   for (tmp = mix->sinkpads; tmp; tmp = tmp->next) {
     GstStructure *s;
+    gint format_number;
 
     pad = tmp->data;
 
@@ -345,19 +347,29 @@ gst_videomixer2_update_converters (GstVideoMixer2 * mix)
 
     gst_caps_unref (possible_caps);
 
-    formats[GST_VIDEO_INFO_FORMAT (&pad->info)] += 1;
+    format_number =
+        GPOINTER_TO_INT (g_hash_table_lookup (formats_table,
+            GINT_TO_POINTER (GST_VIDEO_INFO_FORMAT (&pad->info))));
+    format_number += 1;
+
+    g_hash_table_replace (formats_table,
+        GINT_TO_POINTER (GST_VIDEO_INFO_FORMAT (&pad->info)),
+        GINT_TO_POINTER (format_number));
 
     /* If that pad is the first with alpha, set it as the new best format */
     if (!need_alpha && (pad->info.finfo->flags & GST_VIDEO_FORMAT_FLAG_ALPHA)) {
       need_alpha = TRUE;
       best_format = GST_VIDEO_INFO_FORMAT (&pad->info);
       best_info = pad->info;
-    } else if (formats[GST_VIDEO_INFO_FORMAT (&pad->info)] >
-        formats[best_format]) {
+      best_format_number = format_number;
+    } else if (format_number > best_format_number) {
       best_format = GST_VIDEO_INFO_FORMAT (&pad->info);
       best_info = pad->info;
+      best_format_number = format_number;
     }
   }
+
+  g_hash_table_unref (formats_table);
 
   if (best_format == GST_VIDEO_FORMAT_UNKNOWN) {
     downstream_caps = gst_caps_fixate (downstream_caps);
@@ -1290,42 +1302,6 @@ done_unlocked:
   return ret;
 }
 
-static gboolean
-gst_videomixer2_query_caps (GstPad * pad, GstObject * parent, GstQuery * query)
-{
-  GstCaps *filter;
-  GstStructure *s;
-  gint n;
-  GstVideoMixer2 *mix = GST_VIDEO_MIXER2 (parent);
-  GstCaps *caps = NULL;
-
-  gst_query_parse_caps (query, &filter);
-
-  if (mix->current_caps
-      && GST_VIDEO_INFO_FORMAT (&mix->info) != GST_VIDEO_FORMAT_UNKNOWN)
-    caps = gst_caps_ref (mix->current_caps);
-
-  if (caps == NULL)
-    caps = gst_pad_get_pad_template_caps (mix->srcpad);
-
-  caps = gst_caps_make_writable (caps);
-
-  n = gst_caps_get_size (caps) - 1;
-  for (; n >= 0; n--) {
-    s = gst_caps_get_structure (caps, n);
-    gst_structure_set (s, "width", GST_TYPE_INT_RANGE, 1, G_MAXINT,
-        "height", GST_TYPE_INT_RANGE, 1, G_MAXINT, NULL);
-    if (GST_VIDEO_INFO_FPS_D (&mix->info) != 0) {
-      gst_structure_set (s,
-          "framerate", GST_TYPE_FRACTION_RANGE, 0, 1, G_MAXINT, 1, NULL);
-    }
-  }
-  gst_query_set_caps_result (query, caps);
-  gst_caps_unref (caps);
-
-  return TRUE;
-}
-
 /* FIXME, the duration query should reflect how long you will produce
  * data, that is the amount of stream time until you will emit EOS.
  *
@@ -1526,7 +1502,7 @@ gst_videomixer2_src_query (GstPad * pad, GstObject * parent, GstQuery * query)
       res = gst_videomixer2_query_latency (mix, query);
       break;
     case GST_QUERY_CAPS:
-      res = gst_videomixer2_query_caps (pad, parent, query);
+      res = gst_pad_query_default (pad, parent, query);
       break;
     default:
       /* FIXME, needs a custom query handler because we have multiple
