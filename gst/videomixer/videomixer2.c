@@ -1235,6 +1235,19 @@ gst_videomixer2_collected (GstCollectPads * pads, GstVideoMixer2 * mix)
     }
   }
 
+  if (G_UNLIKELY (mix->pending_events)) {
+    GList *tmp = mix->pending_events;
+
+    while (tmp) {
+      GstEvent *ev = (GstEvent *) tmp->data;
+
+      gst_pad_push_event (mix->srcpad, ev);
+      tmp = g_list_next (tmp);
+    }
+    g_list_free (mix->pending_events);
+    mix->pending_events = NULL;
+  }
+
   if (mix->segment.stop != -1)
     output_end_time = MIN (output_end_time, mix->segment.stop);
 
@@ -1919,6 +1932,11 @@ gst_videomixer2_sink_event (GstCollectPads * pads, GstCollectData * cdata,
       g_atomic_int_set (&mix->flush_stop_pending, FALSE);
       ret = gst_collect_pads_event_default (pads, cdata, event, discard);
       event = NULL;
+      if (mix->pending_events) {
+        g_list_foreach (mix->pending_events, (GFunc) gst_event_unref, NULL);
+        g_list_free (mix->pending_events);
+        mix->pending_events = NULL;
+      }
       break;
     case GST_EVENT_FLUSH_STOP:
       mix->newseg_pending = TRUE;
@@ -1941,6 +1959,11 @@ gst_videomixer2_sink_event (GstCollectPads * pads, GstCollectData * cdata,
       mix->segment.position = -1;
       mix->ts_offset = 0;
       mix->nframes = 0;
+      break;
+    case GST_EVENT_TAG:
+      /* collect tags here so we can push them out when we collect data */
+      mix->pending_events = g_list_append (mix->pending_events, event);
+      event = NULL;
       break;
     default:
       break;
@@ -2161,6 +2184,12 @@ gst_videomixer2_dispose (GObject * o)
 
     if (mixpad->convert)
       videomixer_videoconvert_convert_free (mixpad->convert);
+  }
+
+  if (mix->pending_events) {
+    g_list_foreach (mix->pending_events, (GFunc) gst_event_unref, NULL);
+    g_list_free (mix->pending_events);
+    mix->pending_events = NULL;
   }
 
   gst_caps_replace (&mix->current_caps, NULL);
