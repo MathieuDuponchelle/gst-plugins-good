@@ -120,6 +120,9 @@ struct _GstVideoMixer2
   FillColorFunction fill_color;
 
   gboolean send_stream_start;
+
+  /* Pending inline events */
+  GList *pending_events;
 };
 
 struct _GstVideoMixer2Class
