@@ -1120,7 +1120,6 @@ gst_basemixer_aggregate (GstBaseAggregator * agg)
   } else if (res == -1) {
     GST_BASE_MIXER_UNLOCK (mix);
     GST_DEBUG_OBJECT (mix, "All sinkpads are EOS -- forwarding");
-    gst_pad_push_event (agg->srcpad, gst_event_new_eos ());
     ret = GST_FLOW_EOS;
     goto done_unlocked;
   } else if (res == -2) {
