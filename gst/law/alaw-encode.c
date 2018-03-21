@@ -370,11 +370,26 @@ gst_alaw_enc_handle_frame (GstAudioEncoder * audioenc, GstBuffer * buffer)
 
   alaw_size = linear_size / 2;
 
-  outbuf = gst_audio_encoder_allocate_output_buffer (audioenc, alaw_size);
+  if (alawenc->pool) {
+    ret = gst_buffer_pool_acquire_buffer (alawenc->pool, &outbuf, NULL);
+
+    if (ret == GST_FLOW_OK && gst_buffer_get_size (outbuf) < alaw_size) {
+      gst_buffer_pool_release_buffer (alawenc->pool, outbuf);
+      ret = GST_FLOW_ERROR;
+    }
+
+    if (ret != GST_FLOW_OK)
+      outbuf = gst_audio_encoder_allocate_output_buffer (audioenc, alaw_size);
+    else
+      gst_buffer_resize (outbuf, 0, alaw_size);
+  } else {
+    outbuf = gst_audio_encoder_allocate_output_buffer (audioenc, alaw_size);
+  }
 
   g_assert (outbuf);
 
   gst_buffer_map (outbuf, &outmap, GST_MAP_WRITE);
+
   alaw_data = outmap.data;
 
   for (i = 0; i < alaw_size; i++) {
@@ -397,6 +412,47 @@ not_negotiated:
   }
 }
 
+static gboolean
+gst_alaw_enc_decide_allocation (GstAudioEncoder * encoder, GstQuery * query)
+{
+  GstCaps *outcaps = NULL;
+  GstBufferPool *pool = NULL;
+  GstALawEnc *self = GST_ALAW_ENC (encoder);
+
+  gst_query_parse_allocation (query, &outcaps, NULL);
+
+  if (gst_query_get_n_allocation_pools (query) > 0) {
+    gst_query_parse_nth_allocation_pool (query, 0, &pool, NULL, NULL, NULL);
+  }
+
+  if (self->pool) {
+    gst_buffer_pool_set_active (self->pool, FALSE);
+    gst_object_unref (self->pool);
+    self->pool = NULL;
+  }
+
+  if (pool) {
+    gst_buffer_pool_set_active (pool, TRUE);
+    self->pool = pool;
+  }
+
+  return TRUE;
+}
+
+static gboolean
+gst_alaw_enc_close (GstAudioEncoder * encoder)
+{
+  GstALawEnc *self = GST_ALAW_ENC (encoder);
+
+  if (self->pool) {
+    gst_buffer_pool_set_active (self->pool, FALSE);
+    gst_object_unref (self->pool);
+    self->pool = NULL;
+  }
+
+  return TRUE;
+}
+
 static void
 gst_alaw_enc_class_init (GstALawEncClass * klass)
 {
@@ -407,6 +463,9 @@ gst_alaw_enc_class_init (GstALawEncClass * klass)
   audio_encoder_class->set_format = GST_DEBUG_FUNCPTR (gst_alaw_enc_set_format);
   audio_encoder_class->handle_frame =
       GST_DEBUG_FUNCPTR (gst_alaw_enc_handle_frame);
+  audio_encoder_class->decide_allocation =
+      GST_DEBUG_FUNCPTR (gst_alaw_enc_decide_allocation);
+  audio_encoder_class->close = GST_DEBUG_FUNCPTR (gst_alaw_enc_close);
 
   gst_element_class_add_static_pad_template (element_class,
       &alaw_enc_src_factory);

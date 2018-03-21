@@ -44,6 +44,7 @@ struct _GstALawEnc {
 
   gint channels;
   gint rate;
+  GstBufferPool *pool;
 };
 
 struct _GstALawEncClass {
