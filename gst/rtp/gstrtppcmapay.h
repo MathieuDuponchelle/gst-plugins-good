@@ -38,6 +38,8 @@ typedef struct _GstRtpPcmaPayClass GstRtpPcmaPayClass;
 struct _GstRtpPcmaPay
 {
   GstRTPBaseAudioPayload audiopayload;
+
+  GstBufferPool *pool;
 };
 
 struct _GstRtpPcmaPayClass
