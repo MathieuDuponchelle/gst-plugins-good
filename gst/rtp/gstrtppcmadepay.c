@@ -128,9 +128,10 @@ gst_rtp_pcma_depay_setcaps (GstRTPBaseDepayload * depayload, GstCaps * caps)
 static GstBuffer *
 gst_rtp_pcma_depay_process (GstRTPBaseDepayload * depayload, GstRTPBuffer * rtp)
 {
-  GstBuffer *outbuf = NULL;
   gboolean marker;
   guint len;
+  gsize offset, size;
+  guint header_len;
 
   marker = gst_rtp_buffer_get_marker (rtp);
 
@@ -139,21 +140,21 @@ gst_rtp_pcma_depay_process (GstRTPBaseDepayload * depayload, GstRTPBuffer * rtp)
       gst_rtp_buffer_get_timestamp (rtp), gst_rtp_buffer_get_seq (rtp));
 
   len = gst_rtp_buffer_get_payload_len (rtp);
-  outbuf = gst_rtp_buffer_get_payload_buffer (rtp);
+  size = gst_buffer_get_sizes (rtp->buffer, &offset, NULL);
+  header_len = gst_rtp_buffer_get_header_len (rtp);
+  gst_buffer_resize (rtp->buffer, offset + header_len, size - header_len);
 
-  if (outbuf) {
-    GST_BUFFER_DURATION (outbuf) =
-        gst_util_uint64_scale_int (len, GST_SECOND, depayload->clock_rate);
+  GST_BUFFER_DURATION (rtp->buffer) =
+      gst_util_uint64_scale_int (len, GST_SECOND, depayload->clock_rate);
 
-    if (marker) {
-      /* mark start of talkspurt with RESYNC */
-      GST_BUFFER_FLAG_SET (outbuf, GST_BUFFER_FLAG_RESYNC);
-    }
-
-    gst_rtp_drop_non_audio_meta (depayload, outbuf);
+  if (marker) {
+    /* mark start of talkspurt with RESYNC */
+    GST_BUFFER_FLAG_SET (rtp->buffer, GST_BUFFER_FLAG_RESYNC);
   }
 
-  return outbuf;
+  gst_rtp_drop_non_audio_meta (depayload, rtp->buffer);
+
+  return gst_buffer_ref (rtp->buffer);
 }
 
 gboolean
