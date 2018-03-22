@@ -41,6 +41,8 @@ typedef struct _GstALawDecClass GstALawDecClass;
 
 struct _GstALawDec {
   GstAudioDecoder element;
+  GstBufferPool *pool;
+  gsize pool_size;
 };
 
 struct _GstALawDecClass {

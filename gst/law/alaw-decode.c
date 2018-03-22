@@ -145,6 +145,7 @@ gst_alaw_dec_set_format (GstAudioDecoder * dec, GstCaps * caps)
 static GstFlowReturn
 gst_alaw_dec_handle_frame (GstAudioDecoder * dec, GstBuffer * buffer)
 {
+  GstALawDec *self = GST_ALAW_DEC (dec);
   GstMapInfo inmap, outmap;
   gint16 *linear_data;
   guint8 *alaw_data;
@@ -166,7 +167,23 @@ gst_alaw_dec_handle_frame (GstAudioDecoder * dec, GstBuffer * buffer)
 
   linear_size = alaw_size * 2;
 
-  outbuf = gst_audio_decoder_allocate_output_buffer (dec, linear_size);
+  if (!self->pool) {
+    GstStructure *config;
+
+    self->pool = gst_buffer_pool_new ();
+    self->pool_size = linear_size;
+    config = gst_buffer_pool_get_config (self->pool);
+    gst_buffer_pool_config_set_params (config, NULL, self->pool_size, 0, 0);
+    gst_buffer_pool_set_config (self->pool, config);
+    gst_buffer_pool_set_active (self->pool, TRUE);
+  }
+
+  if (linear_size != self->pool_size ||
+      gst_buffer_pool_acquire_buffer (self->pool, &outbuf,
+          NULL) != GST_FLOW_OK) {
+    outbuf = gst_audio_decoder_allocate_output_buffer (dec, linear_size);
+  }
+
   if (!gst_buffer_map (outbuf, &outmap, GST_MAP_WRITE)) {
     GST_ERROR_OBJECT (dec, "failed to map input buffer");
     goto error_failed_map_output_buffer;
@@ -199,6 +216,27 @@ gst_alaw_dec_start (GstAudioDecoder * dec)
 }
 
 static void
+gst_alaw_dec_flush (GstAudioDecoder * dec, gboolean hard)
+{
+  GstALawDec *self = GST_ALAW_DEC (dec);
+
+  if (hard && self->pool) {
+    gst_buffer_pool_set_active (self->pool, FALSE);
+    gst_object_unref (self->pool);
+    self->pool = NULL;
+    self->pool_size = 0;
+  }
+}
+
+static gboolean
+gst_alaw_dec_close (GstAudioDecoder * dec)
+{
+  gst_alaw_dec_flush (dec, TRUE);
+
+  return TRUE;
+}
+
+static void
 gst_alaw_dec_class_init (GstALawDecClass * klass)
 {
   GstElementClass *element_class = (GstElementClass *) klass;
@@ -210,6 +248,8 @@ gst_alaw_dec_class_init (GstALawDecClass * klass)
       &alaw_dec_sink_factory);
 
   audiodec_class->start = GST_DEBUG_FUNCPTR (gst_alaw_dec_start);
+  audiodec_class->flush = GST_DEBUG_FUNCPTR (gst_alaw_dec_flush);
+  audiodec_class->close = GST_DEBUG_FUNCPTR (gst_alaw_dec_close);
   audiodec_class->set_format = GST_DEBUG_FUNCPTR (gst_alaw_dec_set_format);
   audiodec_class->handle_frame = GST_DEBUG_FUNCPTR (gst_alaw_dec_handle_frame);
 
