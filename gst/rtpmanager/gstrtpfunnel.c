@@ -31,7 +31,7 @@ GST_DEBUG_CATEGORY_STATIC (gst_rtp_funnel_debug);
 
 struct _GstRtpFunnelPad
 {
-  GstPad pad;
+  GstAggregatorPad pad;
   guint32 ssrc;
 };
 
@@ -43,7 +43,7 @@ enum
 
 #define DEFAULT_COMMON_TS_OFFSET -1
 
-G_DEFINE_TYPE (GstRtpFunnelPad, gst_rtp_funnel_pad, GST_TYPE_PAD);
+G_DEFINE_TYPE (GstRtpFunnelPad, gst_rtp_funnel_pad, GST_TYPE_AGGREGATOR_PAD);
 
 static void
 gst_rtp_funnel_pad_class_init (GstRtpFunnelPadClass * klass)
@@ -54,16 +54,16 @@ gst_rtp_funnel_pad_class_init (GstRtpFunnelPadClass * klass)
 static void
 gst_rtp_funnel_pad_init (GstRtpFunnelPad * pad)
 {
-  (void) pad;
+  GST_OBJECT_FLAG_SET (pad, GST_PAD_FLAG_PROXY_CAPS);
+  GST_OBJECT_FLAG_SET (pad, GST_PAD_FLAG_PROXY_ALLOCATION);
 }
 
 struct _GstRtpFunnel
 {
-  GstElement element;
+  GstAggregator element;
 
   GstPad *srcpad;
   GstCaps *srccaps;
-  gboolean send_sticky_events;
   GHashTable *ssrc_to_pad;
 
   /* properties */
@@ -83,96 +83,17 @@ static GstStaticPadTemplate src_template = GST_STATIC_PAD_TEMPLATE ("src",
     GST_STATIC_CAPS (RTP_CAPS));
 
 #define gst_rtp_funnel_parent_class parent_class
-G_DEFINE_TYPE (GstRtpFunnel, gst_rtp_funnel, GST_TYPE_ELEMENT);
-
-
-static gboolean
-gst_rtp_funnel_send_sticky (GstRtpFunnel * funnel, GstPad * pad)
-{
-  GstEvent *stream_start;
-  GstEvent *caps;
-  GstEvent *segment;
-
-  if (!funnel->send_sticky_events)
-    goto done;
-
-  stream_start = gst_pad_get_sticky_event (pad, GST_EVENT_STREAM_START, 0);
-  if (stream_start && !gst_pad_push_event (funnel->srcpad, stream_start)) {
-    GST_ERROR_OBJECT (funnel, "Could not push stream start");
-    goto done;
-  }
-
-  caps = gst_event_new_caps (funnel->srccaps);
-  if (caps && !gst_pad_push_event (funnel->srcpad, caps)) {
-    GST_ERROR_OBJECT (funnel, "Could not push caps");
-    goto done;
-  }
-
-  segment = gst_pad_get_sticky_event (pad, GST_EVENT_SEGMENT, 0);
-  if (segment && !gst_pad_push_event (funnel->srcpad, segment)) {
-    GST_ERROR_OBJECT (funnel, "Could not push segment");
-    goto done;
-  }
-
-  funnel->send_sticky_events = FALSE;
-
-done:
-  return !funnel->send_sticky_events;
-}
-
-static GstFlowReturn
-gst_rtp_funnel_sink_chain_object (GstPad * pad, GstRtpFunnel * funnel,
-    gboolean is_list, GstMiniObject * obj)
-{
-  GstFlowReturn res;
-
-  GST_DEBUG_OBJECT (pad, "received %" GST_PTR_FORMAT, obj);
-
-  GST_PAD_STREAM_LOCK (funnel->srcpad);
-
-  if (!gst_rtp_funnel_send_sticky (funnel, pad)) {
-    GST_PAD_STREAM_UNLOCK (funnel->srcpad);
-    gst_mini_object_unref (obj);
-    return GST_FLOW_OK;
-  }
-
-  if (is_list)
-    res = gst_pad_push_list (funnel->srcpad, GST_BUFFER_LIST_CAST (obj));
-  else
-    res = gst_pad_push (funnel->srcpad, GST_BUFFER_CAST (obj));
-
-  GST_PAD_STREAM_UNLOCK (funnel->srcpad);
-
-  return res;
-}
-
-static GstFlowReturn
-gst_rtp_funnel_sink_chain_list (GstPad * pad, GstObject * parent,
-    GstBufferList * list)
-{
-  GstRtpFunnel *funnel = GST_RTP_FUNNEL_CAST (parent);
-
-  return gst_rtp_funnel_sink_chain_object (pad, funnel, TRUE,
-      GST_MINI_OBJECT_CAST (list));
-}
-
-static GstFlowReturn
-gst_rtp_funnel_sink_chain (GstPad * pad, GstObject * parent, GstBuffer * buffer)
-{
-  GstRtpFunnel *funnel = GST_RTP_FUNNEL_CAST (parent);
-
-  return gst_rtp_funnel_sink_chain_object (pad, funnel, FALSE,
-      GST_MINI_OBJECT_CAST (buffer));
-}
+G_DEFINE_TYPE (GstRtpFunnel, gst_rtp_funnel, GST_TYPE_AGGREGATOR);
 
 static gboolean
-gst_rtp_funnel_sink_event (GstPad * pad, GstObject * parent, GstEvent * event)
+gst_rtp_funnel_sink_event (GstAggregator * agg, GstAggregatorPad * agg_pad,
+    GstEvent * event)
 {
-  GstRtpFunnel *funnel = GST_RTP_FUNNEL_CAST (parent);
+  GstRtpFunnel *funnel = GST_RTP_FUNNEL_CAST (agg);
   gboolean forward = TRUE;
   gboolean ret = TRUE;
 
-  GST_DEBUG_OBJECT (pad, "received event %" GST_PTR_FORMAT, event);
+  GST_DEBUG_OBJECT (agg_pad, "received event %" GST_PTR_FORMAT, event);
 
   switch (GST_EVENT_TYPE (event)) {
     case GST_EVENT_STREAM_START:
@@ -194,11 +115,12 @@ gst_rtp_funnel_sink_event (GstPad * pad, GstObject * parent, GstEvent * event)
 
       s = gst_caps_get_structure (caps, 0);
       if (gst_structure_get_uint (s, "ssrc", &ssrc)) {
-        GstRtpFunnelPad *fpad = GST_RTP_FUNNEL_PAD_CAST (pad);
+        GstRtpFunnelPad *fpad = GST_RTP_FUNNEL_PAD_CAST (agg_pad);
         fpad->ssrc = ssrc;
-        GST_DEBUG_OBJECT (pad, "Got ssrc: %u", ssrc);
+        GST_DEBUG_OBJECT (agg_pad, "Got ssrc: %u", ssrc);
         GST_OBJECT_LOCK (funnel);
-        g_hash_table_insert (funnel->ssrc_to_pad, GUINT_TO_POINTER (ssrc), pad);
+        g_hash_table_insert (funnel->ssrc_to_pad, GUINT_TO_POINTER (ssrc),
+            agg_pad);
         GST_OBJECT_UNLOCK (funnel);
       }
 
@@ -210,7 +132,7 @@ gst_rtp_funnel_sink_event (GstPad * pad, GstObject * parent, GstEvent * event)
   }
 
   if (forward) {
-    ret = gst_pad_event_default (pad, parent, event);
+    ret = GST_AGGREGATOR_CLASS (parent_class)->sink_event (agg, agg_pad, event);
   } else {
     gst_event_unref (event);
   }
@@ -219,9 +141,10 @@ gst_rtp_funnel_sink_event (GstPad * pad, GstObject * parent, GstEvent * event)
 }
 
 static gboolean
-gst_rtp_funnel_sink_query (GstPad * pad, GstObject * parent, GstQuery * query)
+gst_rtp_funnel_sink_query (GstAggregator * agg, GstAggregatorPad * agg_pad,
+    GstQuery * query)
 {
-  GstRtpFunnel *funnel = GST_RTP_FUNNEL_CAST (parent);
+  GstRtpFunnel *funnel = GST_RTP_FUNNEL_CAST (agg);
   gboolean res = FALSE;
   (void) funnel;
 
@@ -245,14 +168,15 @@ gst_rtp_funnel_sink_query (GstPad * pad, GstObject * parent, GstQuery * query)
             (guint) funnel->common_ts_offset, NULL);
 
       gst_query_set_caps_result (query, new_caps);
-      GST_DEBUG_OBJECT (pad, "Answering caps-query with caps: %"
+      GST_DEBUG_OBJECT (agg_pad, "Answering caps-query with caps: %"
           GST_PTR_FORMAT, new_caps);
       gst_caps_unref (new_caps);
       res = TRUE;
       break;
     }
     default:
-      res = gst_pad_query_default (pad, parent, query);
+      res =
+          GST_AGGREGATOR_CLASS (parent_class)->sink_query (agg, agg_pad, query);
       break;
   }
 
@@ -260,13 +184,13 @@ gst_rtp_funnel_sink_query (GstPad * pad, GstObject * parent, GstQuery * query)
 }
 
 static gboolean
-gst_rtp_funnel_src_event (GstPad * pad, GstObject * parent, GstEvent * event)
+gst_rtp_funnel_src_event (GstAggregator * agg, GstEvent * event)
 {
-  GstRtpFunnel *funnel = GST_RTP_FUNNEL_CAST (parent);
+  GstRtpFunnel *funnel = GST_RTP_FUNNEL_CAST (agg);
   gboolean handled = FALSE;
   gboolean ret = TRUE;
 
-  GST_DEBUG_OBJECT (pad, "received event %" GST_PTR_FORMAT, event);
+  GST_DEBUG_OBJECT (agg, "received src event %" GST_PTR_FORMAT, event);
 
   if (GST_EVENT_TYPE (event) == GST_EVENT_CUSTOM_UPSTREAM) {
     const GstStructure *s = gst_event_get_structure (event);
@@ -282,7 +206,7 @@ gst_rtp_funnel_src_event (GstPad * pad, GstObject * parent, GstEvent * event)
       GST_OBJECT_UNLOCK (funnel);
 
       if (fpad) {
-        GST_INFO_OBJECT (pad, "Sending %" GST_PTR_FORMAT " to %" GST_PTR_FORMAT,
+        GST_INFO_OBJECT (agg, "Sending %" GST_PTR_FORMAT " to %" GST_PTR_FORMAT,
             event, fpad);
         ret = gst_pad_push_event (fpad, event);
         gst_object_unref (fpad);
@@ -293,45 +217,10 @@ gst_rtp_funnel_src_event (GstPad * pad, GstObject * parent, GstEvent * event)
   }
 
   if (!handled) {
-    gst_pad_event_default (pad, parent, event);
+    ret = GST_AGGREGATOR_CLASS (parent_class)->src_event (agg, event);
   }
 
   return ret;
-}
-
-static GstPad *
-gst_rtp_funnel_request_new_pad (GstElement * element, GstPadTemplate * templ,
-    const gchar * name, const GstCaps * caps)
-{
-  GstPad *sinkpad;
-  (void) caps;
-
-  GST_DEBUG_OBJECT (element, "requesting pad");
-
-  sinkpad = GST_PAD_CAST (g_object_new (GST_TYPE_RTP_FUNNEL_PAD,
-          "name", name, "direction", templ->direction, "template", templ,
-          NULL));
-
-  gst_pad_set_chain_function (sinkpad,
-      GST_DEBUG_FUNCPTR (gst_rtp_funnel_sink_chain));
-  gst_pad_set_chain_list_function (sinkpad,
-      GST_DEBUG_FUNCPTR (gst_rtp_funnel_sink_chain_list));
-  gst_pad_set_event_function (sinkpad,
-      GST_DEBUG_FUNCPTR (gst_rtp_funnel_sink_event));
-  gst_pad_set_query_function (sinkpad,
-      GST_DEBUG_FUNCPTR (gst_rtp_funnel_sink_query));
-
-  GST_OBJECT_FLAG_SET (sinkpad, GST_PAD_FLAG_PROXY_CAPS);
-  GST_OBJECT_FLAG_SET (sinkpad, GST_PAD_FLAG_PROXY_ALLOCATION);
-
-  gst_pad_set_active (sinkpad, TRUE);
-
-  gst_element_add_pad (element, sinkpad);
-
-  GST_DEBUG_OBJECT (element, "requested pad %s:%s",
-      GST_DEBUG_PAD_NAME (sinkpad));
-
-  return sinkpad;
 }
 
 static void
@@ -366,25 +255,6 @@ gst_rtp_funnel_get_property (GObject * object, guint prop_id, GValue * value,
   }
 }
 
-static GstStateChangeReturn
-gst_rtp_funnel_change_state (GstElement * element, GstStateChange transition)
-{
-  GstRtpFunnel *funnel = GST_RTP_FUNNEL_CAST (element);
-  GstStateChangeReturn ret;
-
-  ret = GST_ELEMENT_CLASS (parent_class)->change_state (element, transition);
-
-  switch (transition) {
-    case GST_STATE_CHANGE_PAUSED_TO_READY:
-      funnel->send_sticky_events = TRUE;
-      break;
-    default:
-      break;
-  }
-
-  return ret;
-}
-
 static gboolean
 _remove_pad_func (gpointer key, gpointer value, gpointer user_data)
 {
@@ -403,8 +273,7 @@ gst_rtp_funnel_release_pad (GstElement * element, GstPad * pad)
 
   g_hash_table_foreach_remove (funnel->ssrc_to_pad, _remove_pad_func, pad);
 
-  gst_pad_set_active (pad, FALSE);
-  gst_element_remove_pad (GST_ELEMENT_CAST (funnel), pad);
+  GST_ELEMENT_CLASS (parent_class)->release_pad (element, pad);
 }
 
 static void
@@ -418,29 +287,70 @@ gst_rtp_funnel_finalize (GObject * object)
   G_OBJECT_CLASS (parent_class)->finalize (object);
 }
 
+/* We only want to push buffers once, and we want to consume buffers
+ * in a time-aware fashion.
+ */
+static GstFlowReturn
+gst_rtp_funnel_aggregate (GstAggregator * agg, gboolean timeout)
+{
+  GstFlowReturn ret = GST_FLOW_OK;
+  GList *l;
+  GstAggregatorPad *earliest = NULL;
+  GstClockTime earliest_pts = GST_CLOCK_TIME_NONE;
+
+  for (l = GST_ELEMENT_CAST (agg)->sinkpads; l; l = l->next) {
+    GstRtpFunnelPad *pad = GST_RTP_FUNNEL_PAD (l->data);
+    GstAggregatorPad *agg_pad = GST_AGGREGATOR_PAD (pad);
+    GstBuffer *buffer = gst_aggregator_pad_peek_buffer (agg_pad);
+
+    if (!buffer)
+      continue;
+
+    if (!earliest || GST_BUFFER_PTS (buffer) < earliest_pts) {
+      earliest = agg_pad;
+      earliest_pts = GST_BUFFER_PTS (buffer);
+    }
+
+    gst_buffer_unref (buffer);
+  }
+
+  if (earliest) {
+    GstBuffer *buffer = gst_aggregator_pad_pop_buffer (earliest);
+
+    ret = gst_aggregator_finish_buffer (agg, buffer);
+  }
+
+  return ret;
+}
+
 static void
 gst_rtp_funnel_class_init (GstRtpFunnelClass * klass)
 {
   GObjectClass *gobject_class = G_OBJECT_CLASS (klass);
   GstElementClass *gstelement_class = GST_ELEMENT_CLASS (klass);
+  GstAggregatorClass *gstaggregator_class = GST_AGGREGATOR_CLASS (klass);
 
   gobject_class->finalize = GST_DEBUG_FUNCPTR (gst_rtp_funnel_finalize);
   gobject_class->get_property = GST_DEBUG_FUNCPTR (gst_rtp_funnel_get_property);
   gobject_class->set_property = GST_DEBUG_FUNCPTR (gst_rtp_funnel_set_property);
-  gstelement_class->request_new_pad =
-      GST_DEBUG_FUNCPTR (gst_rtp_funnel_request_new_pad);
   gstelement_class->release_pad =
       GST_DEBUG_FUNCPTR (gst_rtp_funnel_release_pad);
-  gstelement_class->change_state =
-      GST_DEBUG_FUNCPTR (gst_rtp_funnel_change_state);
+  gstaggregator_class->aggregate = GST_DEBUG_FUNCPTR (gst_rtp_funnel_aggregate);
+  gstaggregator_class->sink_event =
+      GST_DEBUG_FUNCPTR (gst_rtp_funnel_sink_event);
+  gstaggregator_class->sink_query =
+      GST_DEBUG_FUNCPTR (gst_rtp_funnel_sink_query);
+  gstaggregator_class->src_event = GST_DEBUG_FUNCPTR (gst_rtp_funnel_src_event);
 
   gst_element_class_set_static_metadata (gstelement_class, "RTP funnel",
       "RTP Funneling",
       "Funnel RTP buffers together for multiplexing",
       "Havard Graff <havard@gstip.com>");
 
-  gst_element_class_add_static_pad_template (gstelement_class, &sink_template);
-  gst_element_class_add_static_pad_template (gstelement_class, &src_template);
+  gst_element_class_add_static_pad_template_with_gtype (gstelement_class,
+      &sink_template, GST_TYPE_RTP_FUNNEL_PAD);
+  gst_element_class_add_static_pad_template_with_gtype (gstelement_class,
+      &src_template, GST_TYPE_AGGREGATOR_PAD);
 
   g_object_class_install_property (gobject_class, PROP_COMMON_TS_OFFSET,
       g_param_spec_int ("common-ts-offset", "Common Timestamp Offset",
@@ -455,13 +365,9 @@ gst_rtp_funnel_class_init (GstRtpFunnelClass * klass)
 static void
 gst_rtp_funnel_init (GstRtpFunnel * funnel)
 {
-  funnel->srcpad = gst_pad_new_from_static_template (&src_template, "src");
+  funnel->srcpad = GST_AGGREGATOR_CAST (funnel)->srcpad;
   gst_pad_use_fixed_caps (funnel->srcpad);
-  gst_pad_set_event_function (funnel->srcpad,
-      GST_DEBUG_FUNCPTR (gst_rtp_funnel_src_event));
-  gst_element_add_pad (GST_ELEMENT (funnel), funnel->srcpad);
 
-  funnel->send_sticky_events = TRUE;
   funnel->srccaps = gst_caps_new_empty_simple (RTP_CAPS);
   funnel->ssrc_to_pad = g_hash_table_new (NULL, NULL);
 }

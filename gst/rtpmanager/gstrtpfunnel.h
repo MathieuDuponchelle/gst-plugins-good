@@ -24,14 +24,15 @@
 #define __GST_RTP_FUNNEL_H__
 
 #include <gst/gst.h>
+#include <gst/base/gstaggregator.h>
 
 G_BEGIN_DECLS
 
-G_DECLARE_FINAL_TYPE (GstRtpFunnel, gst_rtp_funnel, GST, RTP_FUNNEL, GstElement)
+G_DECLARE_FINAL_TYPE (GstRtpFunnel, gst_rtp_funnel, GST, RTP_FUNNEL, GstAggregator)
 #define GST_TYPE_RTP_FUNNEL (gst_rtp_funnel_get_type())
 #define GST_RTP_FUNNEL_CAST(obj) ((GstRtpFunnel *)(obj))
 
-G_DECLARE_FINAL_TYPE (GstRtpFunnelPad, gst_rtp_funnel_pad, GST, RTP_FUNNEL_PAD, GstPad)
+G_DECLARE_FINAL_TYPE (GstRtpFunnelPad, gst_rtp_funnel_pad, GST, RTP_FUNNEL_PAD, GstAggregatorPad)
 #define GST_TYPE_RTP_FUNNEL_PAD (gst_rtp_funnel_pad_get_type())
 #define GST_RTP_FUNNEL_PAD_CAST(obj) ((GstRtpFunnelPad *)(obj))
 
